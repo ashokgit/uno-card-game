@@ -1451,18 +1451,18 @@ export default function UnoGame() {
 
               <div
                 className={`relative transition-all duration-300 ${player.isActive
-                    ? "ring-4 ring-yellow-400 rounded-full shadow-2xl shadow-yellow-400/70 scale-110"
-                    : player.isNextPlayer
-                      ? "ring-2 ring-blue-400/60 rounded-full shadow-lg shadow-blue-400/40 scale-105"
-                      : ""
+                  ? "ring-4 ring-yellow-400 rounded-full shadow-2xl shadow-yellow-400/70 scale-110"
+                  : player.isNextPlayer
+                    ? "ring-2 ring-blue-400/60 rounded-full shadow-lg shadow-blue-400/40 scale-105"
+                    : ""
                   }`}
               >
                 <Avatar
                   className={`border-2 border-white/30 shadow-lg transition-all duration-300 ${player.isActive
-                      ? "w-20 h-20"
-                      : player.isNextPlayer
-                        ? "w-18 h-18"
-                        : "w-16 h-16"
+                    ? "w-20 h-20"
+                    : player.isNextPlayer
+                      ? "w-18 h-18"
+                      : "w-16 h-16"
                     }`}
                 >
                   <AvatarImage src={player.avatar || "/placeholder.svg"} alt={player.name} />
@@ -1490,10 +1490,10 @@ export default function UnoGame() {
               <div className="text-center">
                 <p
                   className={`font-semibold text-white drop-shadow-lg transition-all duration-300 ${player.isActive
-                      ? "text-base"
-                      : player.isNextPlayer
-                        ? "text-sm font-bold"
-                        : "text-sm"
+                    ? "text-base"
+                    : player.isNextPlayer
+                      ? "text-sm font-bold"
+                      : "text-sm"
                     }`}
                 >
                   {player.name}
@@ -1502,10 +1502,10 @@ export default function UnoGame() {
                   )}
                 </p>
                 <p className={`text-white/80 transition-all duration-300 ${player.isActive
-                    ? "text-sm"
-                    : player.isNextPlayer
-                      ? "text-xs font-medium"
-                      : "text-xs"
+                  ? "text-sm"
+                  : player.isNextPlayer
+                    ? "text-xs font-medium"
+                    : "text-xs"
                   }`}>
                   {player.cardCount} {player.cardCount === 1 ? 'card' : 'cards'}
                 </p>
