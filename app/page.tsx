@@ -73,6 +73,7 @@ export default function UnoGame() {
   const [direction, setDirection] = useState<GameDirection>("clockwise")
   const [currentPlayerId, setCurrentPlayerId] = useState<string>("")
   const [feedback, setFeedback] = useState<{ message: string; type: "good" | "bad" | "great" | "perfect" } | null>(null)
+  const [isAITurnAnimating, setIsAITurnAnimating] = useState(false)
 
   useEffect(() => {
     const playerNames = ["You", "Alice", "Bob", "Carol", "Dave", "Eve"]
@@ -381,27 +382,73 @@ export default function UnoGame() {
   }, [currentPlayerId, playDelay, gameEngine])
 
   const playAITurn = () => {
-    if (!gameEngine) return
+    if (!gameEngine || isAITurnAnimating) return
 
     const currentPlayer = gameEngine.getCurrentPlayer()
     console.log("[v0] Playing AI turn for:", currentPlayer.name)
+
+    setIsAITurnAnimating(true)
 
     const aiSounds = ["play", "special"] as const
     const randomSound = aiSounds[Math.floor(Math.random() * aiSounds.length)]
     playSound(randomSound)
 
+    // First, determine what card the AI will play (without actually playing it yet)
+    const topCard = gameEngine.getTopCard()
+    let cardToPlay: GameCard | null = null
+    let chosenWildColor: string | undefined = undefined
+
+    if (topCard) {
+      // Convert topCard to GameCard format for comparison
+      const topGameCard: GameCard = {
+        id: Number.parseInt(topCard.id),
+        color: topCard.color,
+        value: topCard.value,
+        isPlayable: false
+      }
+
+      // Find a playable card in AI's hand
+      const aiHand = currentPlayer.getHand()
+      for (const card of aiHand) {
+        const gameCard: GameCard = {
+          id: Number.parseInt(card.id),
+          color: card.color,
+          value: card.value,
+          isPlayable: false
+        }
+
+        if (canPlayCard(gameCard, topGameCard)) {
+          cardToPlay = gameCard
+          if (card.isWildCard()) {
+            // AI chooses color based on most cards in hand
+            const colorCounts = { red: 0, blue: 0, green: 0, yellow: 0 }
+            aiHand.forEach(c => {
+              if (c.color !== "wild") {
+                colorCounts[c.color as keyof typeof colorCounts]++
+              }
+            })
+            const maxColor = Object.entries(colorCounts).reduce((a, b) =>
+              colorCounts[a[0] as keyof typeof colorCounts] > colorCounts[b[0] as keyof typeof colorCounts] ? a : b
+            )[0]
+            chosenWildColor = maxColor
+          }
+          break
+        }
+      }
+    }
+
     const currentPlayerIndex = gameEngine.getPlayers().findIndex((p) => p.id === currentPlayer.id)
-    const aiPlayerElement = document.querySelector(`[data-player-${currentPlayerIndex}]`)
+    const aiPlayerElement = document.querySelector(`[data-player="${currentPlayerIndex}"]`)
     const centerElement = document.querySelector("[data-center-pile]")
 
     if (aiPlayerElement && centerElement) {
       const aiPlayerRect = aiPlayerElement.getBoundingClientRect()
       const centerRect = centerElement.getBoundingClientRect()
 
-      // Create AI card throwing animation with realistic physics
+      // Create AI card throwing animation with the actual card being played
       const animatedCard: AnimatedCard = {
         id: Date.now() + currentPlayerIndex,
-        card: { id: Math.random(), color: "red", value: 5, isPlayable: false },
+        card: cardToPlay || { id: Math.random(), color: "red", value: 5, isPlayable: false }, // Use real card if available
         startX: aiPlayerRect.left + aiPlayerRect.width / 2,
         startY: aiPlayerRect.top + aiPlayerRect.height / 2,
         endX: centerRect.left + centerRect.width / 2,
@@ -411,24 +458,30 @@ export default function UnoGame() {
         isAnimating: true,
         type: 'throw',
         rotation: Math.random() * 720 - 360, // More dramatic rotation for AI
-        scale: 1.3,
+        scale: 1.5, // Make it bigger for better visibility
         zIndex: 10000,
         trajectory: 'arc', // Use arc for more dramatic AI throws
-        duration: 2500,
+        duration: 3000, // Longer duration for better visibility
         delay: 0,
         startTime: Date.now(),
       }
 
-      setAnimatedCards((prev) => [...prev, animatedCard])
+      // Small delay to ensure animation is visible
+      setTimeout(() => {
+        setAnimatedCards((prev) => [...prev, animatedCard])
 
-      // Play card flip sound at start
-      playSound("card-flip")
+        // Play card flip sound at start
+        playSound("card-flip")
+      }, 100)
 
       // Animation will be handled by the useEffect animation frame
       // Cards will be removed automatically when animation completes
     }
 
-    // Delay game state update until animation completes
+    // Don't execute AI turn yet - wait for animation to complete
+    // The animation will show the card flying, then we'll execute the actual turn
+
+    // Delay the actual AI turn execution until animation completes
     setTimeout(() => {
       const success = gameEngine.playAITurn()
       console.log("[v0] AI turn result:", success, "New current player:", gameEngine.getCurrentPlayer().name)
@@ -438,7 +491,8 @@ export default function UnoGame() {
       setCurrentCard(gameData.currentCard)
       setDirection(gameData.direction)
       setCurrentPlayerId(gameEngine.getCurrentPlayer().id)
-    }, 2600) // Slightly longer than animation duration
+      setIsAITurnAnimating(false)
+    }, 3100) // Slightly longer than animation duration
   }
 
   const canPlayCard = (card: GameCard, topCard: GameCard): boolean => {
