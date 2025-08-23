@@ -1361,7 +1361,7 @@ export class UnoGame {
     return this.hardAIStrategy(playableCards, topCard, player)
   }
 
-  private getNextPlayer(): UnoPlayer {
+  public getNextPlayer(): UnoPlayer {
     const nextIndex = this.getNextPlayerIndex()
     return this.players[nextIndex]
   }

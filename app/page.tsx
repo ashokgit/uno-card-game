@@ -29,6 +29,7 @@ interface Player {
   cardCount: number
   avatar: string
   isActive: boolean
+  isNextPlayer: boolean
   position: { top: string; left: string; transform?: string; position?: string }
   cards: GameCard[]
 }
@@ -186,6 +187,7 @@ export default function UnoGame() {
 
     const enginePlayers = gameEngine.getPlayers()
     const topCard = gameEngine.getTopCard()
+    const nextPlayer = gameEngine.getNextPlayer()
 
     const players: Player[] = enginePlayers.map((player, index) => {
       const playerData = {
@@ -205,6 +207,7 @@ export default function UnoGame() {
                     ? "/male-avatar-2.png"
                     : "/female-avatar-3.png",
         isActive: gameEngine.getCurrentPlayer().id === player.id,
+        isNextPlayer: nextPlayer.id === player.id,
         position: getPlayerPosition(index),
         cards: index === 0 ? (player.getHand() || []).map(convertEngineCard) : [],
       }
@@ -1447,11 +1450,19 @@ export default function UnoGame() {
               )}
 
               <div
-                className={`relative transition-all duration-300 ${player.isActive ? "ring-4 ring-yellow-400 rounded-full shadow-2xl shadow-yellow-400/70 scale-110" : ""
+                className={`relative transition-all duration-300 ${player.isActive
+                    ? "ring-4 ring-yellow-400 rounded-full shadow-2xl shadow-yellow-400/70 scale-110"
+                    : player.isNextPlayer
+                      ? "ring-2 ring-blue-400/60 rounded-full shadow-lg shadow-blue-400/40 scale-105"
+                      : ""
                   }`}
               >
                 <Avatar
-                  className={`border-2 border-white/30 shadow-lg transition-all duration-300 ${player.isActive ? "w-20 h-20" : "w-16 h-16"
+                  className={`border-2 border-white/30 shadow-lg transition-all duration-300 ${player.isActive
+                      ? "w-20 h-20"
+                      : player.isNextPlayer
+                        ? "w-18 h-18"
+                        : "w-16 h-16"
                     }`}
                 >
                   <AvatarImage src={player.avatar || "/placeholder.svg"} alt={player.name} />
@@ -1467,16 +1478,35 @@ export default function UnoGame() {
                     <div className="absolute inset-0 ring-2 ring-yellow-300/30 rounded-full animate-ping"></div>
                   </>
                 )}
+                {player.isNextPlayer && !player.isActive && (
+                  <>
+                    <div className="absolute -top-1 -right-1 w-2 h-2 bg-blue-400/60 rounded-full animate-pulse shadow-md"></div>
+                    {/* Subtle glow effect for next player */}
+                    <div className="absolute inset-0 ring-2 ring-blue-400/30 rounded-full animate-pulse"></div>
+                  </>
+                )}
               </div>
 
               <div className="text-center">
                 <p
-                  className={`font-semibold text-white drop-shadow-lg transition-all duration-300 ${player.isActive ? "text-base" : "text-sm"
+                  className={`font-semibold text-white drop-shadow-lg transition-all duration-300 ${player.isActive
+                      ? "text-base"
+                      : player.isNextPlayer
+                        ? "text-sm font-bold"
+                        : "text-sm"
                     }`}
                 >
                   {player.name}
+                  {player.isNextPlayer && !player.isActive && (
+                    <span className="ml-1 text-blue-300 text-xs">→</span>
+                  )}
                 </p>
-                <p className={`text-white/80 transition-all duration-300 ${player.isActive ? "text-sm" : "text-xs"}`}>
+                <p className={`text-white/80 transition-all duration-300 ${player.isActive
+                    ? "text-sm"
+                    : player.isNextPlayer
+                      ? "text-xs font-medium"
+                      : "text-xs"
+                  }`}>
                   {player.cardCount} {player.cardCount === 1 ? 'card' : 'cards'}
                 </p>
                 {player.cardCount === 1 && !player.isActive && (
