@@ -62,6 +62,7 @@ export function GameLog({
     const scrollAreaRef = useRef<HTMLDivElement>(null)
     const [copied, setCopied] = useState(false)
     const [debugMode, setDebugMode] = useState(false)
+    const [processedEventCount, setProcessedEventCount] = useState(0)
 
     // Auto-scroll to bottom when new logs are added
     useEffect(() => {
@@ -88,9 +89,15 @@ export function GameLog({
         if (!gameEngine) return
 
         const eventLog = gameEngine.getEventLog()
-        const recentEvents = eventLog.slice(-10) // Get last 10 events
 
-        recentEvents.forEach(event => {
+        // Handle case where event log was cleared (e.g., game restart)
+        if (eventLog.length < processedEventCount) {
+            setProcessedEventCount(0)
+        }
+
+        const newEvents = eventLog.slice(processedEventCount) // Only process new events
+
+        newEvents.forEach(event => {
             switch (event.event) {
                 case 'onCardPlayed':
                     setStats(prev => ({
@@ -216,7 +223,10 @@ export function GameLog({
                     break
             }
         })
-    }, [gameEngine?.getEventLog().length])
+
+        // Update processed event count
+        setProcessedEventCount(eventLog.length)
+    }, [gameEngine?.getEventLog().length, processedEventCount])
 
     const clearLogs = () => {
         setLogs([])
@@ -230,6 +240,7 @@ export function GameLog({
             challenges: 0,
             gameStartTime: Date.now(),
         })
+        setProcessedEventCount(0)
     }
 
     const copyLogsToClipboard = async () => {
