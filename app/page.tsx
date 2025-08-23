@@ -236,8 +236,8 @@ export default function UnoGame() {
 
     // Perfect symmetrical arc using polar coordinates
     const centerX = 50; // Center of screen horizontally
-    const centerY = 35; // Center of deck area
-    const radius = 15;  // Distance from center (adjust to bring closer/farther)
+    const centerY = 35 + 20; // Center of deck area moved 20px below
+    const radius = 35;  // Distance from center (increased for more spacing)
 
     // Angles for each opponent (in degrees)
     const angles = [180, 225, 270, 315, 0]; // Perfect arc distribution
