@@ -77,7 +77,45 @@ export default function UnoGame() {
 
   useEffect(() => {
     const playerNames = ["You", "Alice", "Bob", "Carol", "Dave", "Eve"]
-    const engine = new GameEngine(playerNames, 0) // Human player at index 0
+    const engine = new GameEngine(playerNames, 0, {
+      debugMode: true, // Enable debug logging
+      aiDifficulty: 'hard', // Set AI difficulty
+      stackDrawTwo: false, // Official rules: no stacking
+      stackDrawFour: false, // Official rules: no stacking
+      mustPlayIfDrawable: false, // Official rules: player chooses
+      targetScore: 500,
+    }, {
+      // Event handlers for UI integration
+      onCardPlayed: (player, card, chosenColor) => {
+        console.log(`🎴 ${player.name} played ${card.color} ${card.value}${chosenColor ? ` (chose ${chosenColor})` : ''}`)
+      },
+      onTurnChange: (nextPlayer, direction) => {
+        console.log(`🔄 Turn: ${nextPlayer.name} (${direction})`)
+      },
+      onRoundEnd: (winner, points, scores) => {
+        console.log(`🏆 Round won by ${winner.name} with ${points} points!`)
+        console.log('📊 Scores:', Object.fromEntries(scores))
+      },
+      onGameEnd: (winner, finalScores) => {
+        console.log(`🎉 GAME OVER! ${winner.name} wins the game!`)
+        console.log('🏁 Final scores:', Object.fromEntries(finalScores))
+      },
+      onUnoCalled: (player) => {
+        console.log(`📢 ${player.name} called UNO!`)
+      },
+      onUnoChallenged: (challenger, target, success) => {
+        console.log(`⚖️ ${challenger.name} challenged ${target.name}'s UNO call - ${success ? 'SUCCESS' : 'FAILED'}`)
+      },
+      onWildDrawFourChallenged: (challenger, target, success) => {
+        console.log(`🎯 ${challenger.name} challenged ${target.name}'s Wild Draw Four - ${success ? 'SUCCESS' : 'FAILED'}`)
+      },
+      onCardDrawn: (player, card, autoPlayed) => {
+        console.log(`📥 ${player.name} drew ${card.color} ${card.value}${autoPlayed ? ' (auto-played)' : ''}`)
+      },
+      onActionCardPlayed: (player, card, effect) => {
+        console.log(`⚡ ${player.name} played ${card.color} ${card.value} - ${effect}`)
+      },
+    })
     setGameEngine(engine)
   }, [])
 
@@ -242,7 +280,7 @@ export default function UnoGame() {
       }
 
       const success = gameEngine.playCard("player_0", cardToPlay.id.toString(), chosenColor)
-      console.log("[v0] User card play result:", success, "New current player:", gameEngine.getCurrentPlayer().name)
+      console.log("User card play result:", success, "New current player:", gameEngine.getCurrentPlayer().name)
 
       if (success) {
         const gameData = convertToUIFormat()
@@ -272,7 +310,7 @@ export default function UnoGame() {
     if (topCard) {
       const playableCards = players[0]?.cards.filter(card => card.isPlayable) || []
       if (playableCards.length > 0) {
-        console.log("[v0] Cannot draw - player has playable cards:", playableCards.length)
+        console.log("Cannot draw - player has playable cards:", playableCards.length)
         return
       }
     }
@@ -320,7 +358,7 @@ export default function UnoGame() {
     // Delay game state update until animation completes
     setTimeout(() => {
       const drawnCard = gameEngine.drawCard("player_0")
-      console.log("[v0] User draw result, New current player:", gameEngine.getCurrentPlayer().name)
+      console.log("User draw result, New current player:", gameEngine.getCurrentPlayer().name)
 
       const gameData = convertToUIFormat()
       setPlayers(gameData.players)
@@ -372,7 +410,7 @@ export default function UnoGame() {
     const isHumanTurn = currentPlayer.name === "You" || currentPlayer.id === "player_0"
 
     if (!isHumanTurn && !playDelay) {
-      console.log("[v0] AI turn starting for:", currentPlayer.name)
+      console.log("AI turn starting for:", currentPlayer.name)
       const timer = setTimeout(() => {
         playAITurn()
       }, 3500)
@@ -385,7 +423,7 @@ export default function UnoGame() {
     if (!gameEngine || isAITurnAnimating) return
 
     const currentPlayer = gameEngine.getCurrentPlayer()
-    console.log("[v0] Playing AI turn for:", currentPlayer.name)
+    console.log("Playing AI turn for:", currentPlayer.name)
 
     setIsAITurnAnimating(true)
 
@@ -484,7 +522,7 @@ export default function UnoGame() {
     // Delay the actual AI turn execution until animation completes
     setTimeout(() => {
       const success = gameEngine.playAITurn()
-      console.log("[v0] AI turn result:", success, "New current player:", gameEngine.getCurrentPlayer().name)
+      console.log("AI turn result:", success, "New current player:", gameEngine.getCurrentPlayer().name)
 
       const gameData = convertToUIFormat()
       setPlayers(gameData.players)
@@ -1097,7 +1135,7 @@ export default function UnoGame() {
               style={{ transform: `rotate(${(index - 2) * 3}deg)` }}
               onClick={() => {
                 console.log(
-                  "[v0] Card clicked:",
+                  "Card clicked:",
                   card.id,
                   "isPlayable:",
                   card.isPlayable,
