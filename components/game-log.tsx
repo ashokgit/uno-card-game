@@ -311,7 +311,7 @@ Game Statistics:
                 <Button
                     size="sm"
                     variant="outline"
-                    className="bg-black/50 text-white border-white/20 hover:bg-black/70"
+                    className="bg-black/50 text-white border-white/20 hover:bg-black/70 transition-all duration-300"
                     onClick={onToggleVisibility}
                 >
                     <Eye className="w-4 h-4" />
@@ -321,146 +321,149 @@ Game Statistics:
     }
 
     return (
-        <div className="absolute bottom-4 left-4 z-30">
-            <Card className="w-96 h-80 bg-black/60 backdrop-blur-sm border-white/20 shadow-2xl">
-                <div className="p-3 border-b border-white/10">
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                            <Activity className="w-4 h-4 text-white" />
-                            <span className="text-white text-sm font-semibold">Game Log</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                            <Button
-                                size="sm"
-                                variant="ghost"
-                                className={`h-6 w-6 p-0 hover:text-white hover:bg-white/10 ${debugMode ? 'text-green-400' : 'text-white/70'}`}
-                                onClick={() => setDebugMode(!debugMode)}
-                                title="Toggle debug mode"
-                            >
-                                <Bug className="w-3 h-3" />
-                            </Button>
-                            <Button
-                                size="sm"
-                                variant="ghost"
-                                className="h-6 w-6 p-0 text-white/70 hover:text-white hover:bg-white/10"
-                                onClick={copyLogsToClipboard}
-                                title="Copy logs to clipboard"
-                            >
-                                {copied ? <Check className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3" />}
-                            </Button>
-                            <Button
-                                size="sm"
-                                variant="ghost"
-                                className="h-6 w-6 p-0 text-white/70 hover:text-white hover:bg-white/10"
-                                onClick={clearLogs}
-                                title="Clear logs"
-                            >
-                                <Trash2 className="w-3 h-3" />
-                            </Button>
-                            <Button
-                                size="sm"
-                                variant="ghost"
-                                className="h-6 w-6 p-0 text-white/70 hover:text-white hover:bg-white/10"
-                                onClick={onToggleVisibility}
-                                title="Hide log"
-                            >
-                                <EyeOff className="w-3 h-3" />
-                            </Button>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="flex h-full">
-                    {/* Stats Panel */}
-                    <div className="w-1/2 p-2 border-r border-white/10 overflow-y-auto">
-                        <div className="space-y-1.5">
-                            <div className="flex items-center gap-2 text-sm text-white/80">
-                                <Clock className="w-4 h-4" />
-                                <span>{Math.floor(gameDuration / 60)}:{(gameDuration % 60).toString().padStart(2, '0')}</span>
+        <div className="absolute left-0 top-0 h-full z-30">
+            <div className="flex h-full">
+                {/* Collapsible Sidebar */}
+                <div className="w-80 h-full bg-black/80 backdrop-blur-lg border-r border-white/20 shadow-2xl transition-all duration-300">
+                    <div className="p-4 border-b border-white/10">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <Activity className="w-5 h-5 text-white" />
+                                <span className="text-white text-lg font-semibold">Game Log</span>
                             </div>
-
-                            <div className="space-y-0.5">
-                                <div className="flex justify-between text-sm">
-                                    <span className="text-white/70">Turns:</span>
-                                    <span className="text-white">{stats.totalTurns}</span>
-                                </div>
-                                <div className="flex justify-between text-sm">
-                                    <span className="text-white/70">Played:</span>
-                                    <span className="text-blue-300">{stats.cardsPlayed}</span>
-                                </div>
-                                <div className="flex justify-between text-sm">
-                                    <span className="text-white/70">Drawn:</span>
-                                    <span className="text-green-300">{stats.cardsDrawn}</span>
-                                </div>
-                                <div className="flex justify-between text-sm">
-                                    <span className="text-white/70">Actions:</span>
-                                    <span className="text-yellow-300">{stats.actionCardsPlayed}</span>
-                                </div>
-                                <div className="flex justify-between text-sm">
-                                    <span className="text-white/70">Wild:</span>
-                                    <span className="text-purple-300">{stats.wildCardsPlayed}</span>
-                                </div>
-                                <div className="flex justify-between text-sm">
-                                    <span className="text-white/70">UNO:</span>
-                                    <span className="text-red-300">{stats.unoCalls}</span>
-                                </div>
-                                <div className="flex justify-between text-sm">
-                                    <span className="text-white/70">Challenges:</span>
-                                    <span className="text-orange-300">{stats.challenges}</span>
-                                </div>
-                            </div>
-
-                            {/* Current Game State */}
-                            <div className="pt-2 border-t border-white/10">
-                                <div className="text-sm text-white/70 mb-1">Current State:</div>
-                                <div className="space-y-0.5 text-sm">
-                                    <div className="flex justify-between">
-                                        <span className="text-white/70">Direction:</span>
-                                        <span className="text-white">{direction}</span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                        <span className="text-white/70">Top Card:</span>
-                                        <span className="text-white">{currentCard?.value || 'None'}</span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                        <span className="text-white/70">Players:</span>
-                                        <span className="text-white">{players.length}</span>
-                                    </div>
-                                </div>
+                            <div className="flex items-center gap-1">
+                                <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className={`h-7 w-7 p-0 hover:text-white hover:bg-white/10 ${debugMode ? 'text-green-400' : 'text-white/70'}`}
+                                    onClick={() => setDebugMode(!debugMode)}
+                                    title="Toggle debug mode"
+                                >
+                                    <Bug className="w-3 h-3" />
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-7 w-7 p-0 text-white/70 hover:text-white hover:bg-white/10"
+                                    onClick={copyLogsToClipboard}
+                                    title="Copy logs to clipboard"
+                                >
+                                    {copied ? <Check className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3" />}
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-7 w-7 p-0 text-white/70 hover:text-white hover:bg-white/10"
+                                    onClick={clearLogs}
+                                    title="Clear logs"
+                                >
+                                    <Trash2 className="w-3 h-3" />
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-7 w-7 p-0 text-white/70 hover:text-white hover:bg-white/10"
+                                    onClick={onToggleVisibility}
+                                    title="Hide log"
+                                >
+                                    <EyeOff className="w-3 h-3" />
+                                </Button>
                             </div>
                         </div>
                     </div>
 
-                    {/* Log Panel */}
-                    <div className="w-1/2 h-full overflow-hidden">
-                        <ScrollArea ref={scrollAreaRef} className="h-full">
-                            <div className="p-2 space-y-0.5 max-h-full">
-                                {logs.length === 0 ? (
-                                    <div className="text-center text-white/50 text-sm py-4">
-                                        <Info className="w-4 h-4 mx-auto mb-1" />
-                                        No logs yet
+                    <div className="flex flex-col h-full">
+                        {/* Stats Panel */}
+                        <div className="p-4 border-b border-white/10">
+                            <div className="space-y-2">
+                                <div className="flex items-center gap-2 text-sm text-white/80">
+                                    <Clock className="w-4 h-4" />
+                                    <span className="font-semibold">{Math.floor(gameDuration / 60)}:{(gameDuration % 60).toString().padStart(2, '0')}</span>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-2 text-sm">
+                                    <div className="flex justify-between">
+                                        <span className="text-white/70">Turns:</span>
+                                        <span className="text-white font-semibold">{stats.totalTurns}</span>
                                     </div>
-                                ) : (
-                                    logs.map((log) => (
-                                        <div
-                                            key={log.id}
-                                            className={`text-sm ${getLogColor(log.type)} flex items-start gap-1 py-1`}
-                                        >
-                                            <span className="flex-shrink-0">{getLogIcon(log.type)}</span>
-                                            <div className="flex-1 min-w-0">
-                                                <div className="truncate leading-tight">{log.message}</div>
-                                                <div className="text-white/50 text-xs leading-tight">
-                                                    {formatTime(log.timestamp)}
+                                    <div className="flex justify-between">
+                                        <span className="text-white/70">Played:</span>
+                                        <span className="text-blue-300 font-semibold">{stats.cardsPlayed}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span className="text-white/70">Drawn:</span>
+                                        <span className="text-green-300 font-semibold">{stats.cardsDrawn}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span className="text-white/70">Actions:</span>
+                                        <span className="text-yellow-300 font-semibold">{stats.actionCardsPlayed}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span className="text-white/70">Wild:</span>
+                                        <span className="text-purple-300 font-semibold">{stats.wildCardsPlayed}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span className="text-white/70">UNO:</span>
+                                        <span className="text-red-300 font-semibold">{stats.unoCalls}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span className="text-white/70">Challenges:</span>
+                                        <span className="text-orange-300 font-semibold">{stats.challenges}</span>
+                                    </div>
+                                </div>
+
+                                {/* Current Game State */}
+                                <div className="pt-3 border-t border-white/10">
+                                    <div className="text-sm text-white/70 mb-2 font-semibold">Current State:</div>
+                                    <div className="space-y-1 text-sm">
+                                        <div className="flex justify-between">
+                                            <span className="text-white/70">Direction:</span>
+                                            <span className="text-white font-semibold">{direction}</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-white/70">Top Card:</span>
+                                            <span className="text-white font-semibold">{currentCard?.value || 'None'}</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-white/70">Players:</span>
+                                            <span className="text-white font-semibold">{players.length}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Log Panel */}
+                        <div className="flex-1 overflow-hidden">
+                            <ScrollArea ref={scrollAreaRef} className="h-full">
+                                <div className="p-4 space-y-1">
+                                    {logs.length === 0 ? (
+                                        <div className="text-center text-white/50 text-sm py-8">
+                                            <Info className="w-6 h-6 mx-auto mb-2" />
+                                            No logs yet
+                                        </div>
+                                    ) : (
+                                        logs.map((log) => (
+                                            <div
+                                                key={log.id}
+                                                className={`text-sm ${getLogColor(log.type)} flex items-start gap-2 py-2 border-b border-white/5 last:border-b-0`}
+                                            >
+                                                <span className="flex-shrink-0 text-lg">{getLogIcon(log.type)}</span>
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="leading-tight font-medium">{log.message}</div>
+                                                    <div className="text-white/50 text-xs leading-tight mt-1">
+                                                        {formatTime(log.timestamp)}
+                                                    </div>
                                                 </div>
                                             </div>
-                                        </div>
-                                    ))
-                                )}
-                            </div>
-                        </ScrollArea>
+                                        ))
+                                    )}
+                                </div>
+                            </ScrollArea>
+                        </div>
                     </div>
                 </div>
-            </Card>
+            </div>
         </div>
     )
 }

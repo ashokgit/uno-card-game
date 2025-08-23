@@ -217,17 +217,73 @@
   }
 }
 
+/* New enhanced animations */
+@keyframes card-hover-lift {
+  0% {
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    transform: translateY(-8px) scale(1.05);
+  }
+}
+
+@keyframes playable-glow {
+  0%, 100% {
+    box-shadow: 0 0 15px rgba(255, 215, 0, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 25px rgba(255, 215, 0, 0.7), 0 0 35px rgba(255, 165, 0, 0.5);
+  }
+}
+
+@keyframes turn-indicator-pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.05);
+    opacity: 0.8;
+  }
+}
+
+@keyframes spotlight-effect {
+  0%, 100% {
+    opacity: 0.3;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(1.1);
+  }
+}
+
+@keyframes particle-sparkle {
+  0% {
+    transform: translate(0, 0) scale(0) rotate(0deg);
+    opacity: 1;
+  }
+  50% {
+    transform: translate(var(--sparkle-x, 10px), var(--sparkle-y, -10px)) scale(1) rotate(180deg);
+    opacity: 0.8;
+  }
+  100% {
+    transform: translate(var(--sparkle-x2, 20px), var(--sparkle-y2, -20px)) scale(0) rotate(360deg);
+    opacity: 0;
+  }
+}
+
 /* Animation utility classes */
 .animate-card-throw {
   animation: card-throw 1.2s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
 }
 
 .animate-card-draw {
-  animation: card-draw 0.8s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  animation: card-draw 1.2s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
 }
 
 .animate-card-bounce {
-  animation: card-bounce 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  animation: card-bounce 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 .animate-card-spin {
@@ -235,15 +291,36 @@
 }
 
 .animate-card-glow {
-  animation: card-glow 1s ease-in-out infinite;
+  animation: card-glow 1s cubic-bezier(0.25, 0.46, 0.45, 0.94) infinite;
 }
 
 .animate-particle-trail {
-  animation: particle-trail 0.8s ease-out forwards;
+  animation: particle-trail 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
 }
 
 .animate-card-land {
-  animation: card-land 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55) forwards;
+  animation: card-land 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+}
+
+/* New enhanced animation classes */
+.animate-card-hover-lift {
+  animation: card-hover-lift 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+}
+
+.animate-playable-glow {
+  animation: playable-glow 2s cubic-bezier(0.25, 0.46, 0.45, 0.94) infinite;
+}
+
+.animate-turn-indicator-pulse {
+  animation: turn-indicator-pulse 1.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) infinite;
+}
+
+.animate-spotlight-effect {
+  animation: spotlight-effect 2s cubic-bezier(0.25, 0.46, 0.45, 0.94) infinite;
+}
+
+.animate-particle-sparkle {
+  animation: particle-sparkle 1s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
 }
 
 /* Physics-based card effects */
@@ -268,6 +345,11 @@
           drop-shadow(0 0 30px rgba(0, 150, 255, 0.4));
 }
 
+.card-glow-playable {
+  filter: drop-shadow(0 0 10px rgba(255, 215, 0, 0.5))
+          drop-shadow(0 0 20px rgba(255, 165, 0, 0.3));
+}
+
 /* Particle effects */
 .particle {
   position: absolute;
@@ -278,4 +360,202 @@
 
 .particle-draw {
   background: radial-gradient(circle, rgba(0, 191, 255, 0.8) 0%, rgba(0, 150, 255, 0.4) 100%);
+}
+
+.particle-playable {
+  background: radial-gradient(circle, rgba(255, 215, 0, 0.8) 0%, rgba(255, 165, 0, 0.4) 100%);
+}
+
+/* Enhanced card hover effects */
+.card-hover-effect {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.card-hover-effect:hover {
+  transform: translateY(-4px) scale(1.02);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+}
+
+/* Playable card specific effects */
+.playable-card {
+  position: relative;
+  overflow: visible;
+}
+
+.playable-card::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  background: linear-gradient(45deg, #fbbf24, #f59e0b, #d97706, #fbbf24);
+  border-radius: 8px;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  z-index: -1;
+}
+
+.playable-card:hover::before {
+  opacity: 1;
+  animation: playable-glow 2s ease-in-out infinite;
+}
+
+/* Turn indicator enhancements */
+.turn-indicator {
+  position: relative;
+  overflow: visible;
+}
+
+.turn-indicator::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  background: radial-gradient(circle, rgba(255, 215, 0, 0.3) 0%, transparent 70%);
+  border-radius: 12px;
+  animation: spotlight-effect 2s ease-in-out infinite;
+  z-index: -1;
+}
+
+
+
+.current-player {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 40vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px;
+}
+
+.player-hand {
+  display: flex;
+  gap: -15px;
+  justify-content: center;
+  flex-wrap: wrap;
+  max-width: 90vw;
+  margin-bottom: 20px;
+}
+
+.player-card {
+  width: 80px;
+  height: 120px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: transform 0.2s ease, z-index 0.2s ease;
+  transform-origin: bottom center;
+}
+
+.player-card:hover {
+  transform: translateY(-20px) scale(1.05);
+  z-index: 10;
+}
+
+/* Fan effect for player hand */
+.player-card:nth-child(1) { transform: rotate(-15deg); }
+.player-card:nth-child(2) { transform: rotate(-10deg); }
+.player-card:nth-child(3) { transform: rotate(-5deg); }
+.player-card:nth-child(4) { transform: rotate(0deg); }
+.player-card:nth-child(5) { transform: rotate(5deg); }
+.player-card:nth-child(6) { transform: rotate(10deg); }
+.player-card:nth-child(7) { transform: rotate(15deg); }
+
+.play-area {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  gap: 40px;
+  align-items: center;
+  z-index: 5;
+}
+
+.discard-pile {
+  position: relative;
+}
+
+.current-card {
+  width: 90px;
+  height: 135px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  font-weight: bold;
+  box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+  transform: rotate(-5deg);
+}
+
+.draw-pile {
+  width: 90px;
+  height: 135px;
+  position: relative;
+}
+
+.turn-indicator {
+  position: absolute;
+  top: -60px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(255,255,255,0.1);
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-weight: bold;
+  backdrop-filter: blur(10px);
+}
+
+
+
+
+
+/* Radial gradient utility */
+.bg-gradient-radial {
+  background: radial-gradient(circle, var(--tw-gradient-stops));
+}
+
+/* Playable card pulse animation */
+@keyframes playablePulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7);
+  }
+  50% {
+    box-shadow: 0 0 0 10px rgba(34, 197, 94, 0);
+  }
+}
+
+.playable-pulse {
+  animation: playablePulse 2s infinite;
+}
+
+/* Card Play Animation */
+@keyframes cardPlay {
+  0% { 
+    transform: translateY(0) rotate(var(--start-rotation)) scale(1);
+  }
+  50% { 
+    transform: translateY(-100px) rotate(0deg) scale(1.1);
+  }
+  100% { 
+    transform: translateY(0) rotate(-5deg) scale(1);
+  }
+}
+
+.card-playing {
+  animation: cardPlay 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Turn Transition */
+.opponent.active-turn {
+  animation: pulseGlow 2s infinite;
+}
+
+@keyframes pulseGlow {
+  0%, 100% { 
+    box-shadow: 0 0 20px rgba(255,215,0,0.5);
+  }
+  50% { 
+    box-shadow: 0 0 40px rgba(255,215,0,0.8);
+  }
 }

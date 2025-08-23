@@ -13,9 +13,9 @@ interface UnoCardProps {
 
 export function UnoCard({ color, value, size = "medium", isPlayable = false, onClick, className = "" }: UnoCardProps) {
   const sizeClasses = {
-    small: "w-16 h-24",
-    medium: "w-20 h-28",
-    large: "w-24 h-32",
+    small: "w-[35px] h-[50px]",    // Opponent cards: 35px × 50px
+    medium: "w-[80px] h-[120px]",  // Center pile cards: 80px × 120px
+    large: "w-[70px] h-[105px]",   // Player hand cards: 70px × 105px
   }
 
   const getCardComponent = () => {
@@ -56,17 +56,29 @@ export function UnoCard({ color, value, size = "medium", isPlayable = false, onC
 
   return (
     <div
-      className={`${sizeClasses[size]} ${getCardBg()} rounded-lg border-2 border-gray-300 shadow-lg cursor-pointer transition-all duration-200 ${
-        isPlayable ? "hover:scale-110 hover:-translate-y-2 hover:shadow-2xl" : ""
-      } ${className}`}
+      className={`${sizeClasses[size]} ${getCardBg()} rounded-lg border-2 shadow-lg cursor-pointer transition-all duration-300 transform ${isPlayable
+          ? "border-green-400 hover:scale-105 hover:-translate-y-2 hover:shadow-2xl hover:shadow-green-400/50 animate-pulse playable-pulse"
+          : "border-gray-300 hover:scale-105 hover:shadow-2xl"
+        } ${className}`}
       onClick={onClick}
     >
       {getCardComponent()}
+      {/* Enhanced playable card indicator */}
+      {isPlayable && (
+        <>
+          <div className="absolute inset-0 bg-green-400/20 rounded-lg animate-pulse"></div>
+          <div className="absolute inset-0 ring-2 ring-green-400/60 rounded-lg animate-ping"></div>
+          <div className="absolute inset-0 ring-1 ring-green-300/40 rounded-lg animate-pulse"></div>
+          {/* Corner indicators */}
+          <div className="absolute top-1 right-1 w-2 h-2 bg-green-400 rounded-full animate-ping"></div>
+          <div className="absolute bottom-1 left-1 w-2 h-2 bg-green-400 rounded-full animate-ping" style={{ animationDelay: '0.5s' }}></div>
+        </>
+      )}
     </div>
   )
 }
 
-function NumberCard({ color, value, size }: { color: string; value: string | number; size: string }) {
+function NumberCard({ color, value, size }: { color: string; value: string | number; size: "small" | "medium" | "large" }) {
   const textSizes = {
     small: { corner: "text-sm", center: "text-2xl" },
     medium: { corner: "text-base", center: "text-3xl" },
@@ -99,7 +111,7 @@ function NumberCard({ color, value, size }: { color: string; value: string | num
   )
 }
 
-function SkipCard({ color, size }: { color: string; size: string }) {
+function SkipCard({ color, size }: { color: string; size: "small" | "medium" | "large" }) {
   const iconSizes = {
     small: "w-4 h-4",
     medium: "w-6 h-6",
@@ -130,7 +142,7 @@ function SkipCard({ color, size }: { color: string; size: string }) {
   )
 }
 
-function ReverseCard({ color, size }: { color: string; size: string }) {
+function ReverseCard({ color, size }: { color: string; size: "small" | "medium" | "large" }) {
   const iconSizes = {
     small: "w-4 h-4",
     medium: "w-6 h-6",
@@ -161,7 +173,7 @@ function ReverseCard({ color, size }: { color: string; size: string }) {
   )
 }
 
-function DrawTwoCard({ color, size }: { color: string; size: string }) {
+function DrawTwoCard({ color, size }: { color: string; size: "small" | "medium" | "large" }) {
   const textSizes = {
     small: { corner: "text-xs", center: "text-lg" },
     medium: { corner: "text-sm", center: "text-xl" },
@@ -194,7 +206,7 @@ function DrawTwoCard({ color, size }: { color: string; size: string }) {
   )
 }
 
-function WildCard({ size }: { size: string }) {
+function WildCard({ size }: { size: "small" | "medium" | "large" }) {
   return (
     <div className="relative w-full h-full p-1">
       <div className="absolute inset-2 bg-white rounded-full opacity-90"></div>
@@ -222,7 +234,7 @@ function WildCard({ size }: { size: string }) {
   )
 }
 
-function WildDrawFourCard({ size }: { size: string }) {
+function WildDrawFourCard({ size }: { size: "small" | "medium" | "large" }) {
   const textSizes = {
     small: { corner: "text-xs", center: "text-sm" },
     medium: { corner: "text-sm", center: "text-base" },
