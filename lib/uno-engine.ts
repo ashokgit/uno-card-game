@@ -28,6 +28,7 @@ export interface UnoRules {
   enableJumpIn: boolean
   enableSevenZero: boolean
   enableSwapHands: boolean
+  showDiscardPile: boolean  // If true, expose and allow viewing the full discard pile
 }
 
 export const DEFAULT_RULES: UnoRules = {
@@ -37,10 +38,11 @@ export const DEFAULT_RULES: UnoRules = {
   allowDrawWhenPlayable: true,     // official behavior
   targetScore: 500,
   debugMode: false,
-  aiDifficulty: 'normal',
+  aiDifficulty: 'expert',
   enableJumpIn: false,
   enableSevenZero: false,
   enableSwapHands: false,
+  showDiscardPile: false,  // Official: only top card is relevant, but can enable for full visibility
 }
 
 // Event hooks for UI and multiplayer integration
@@ -993,6 +995,10 @@ export class UnoGame {
     return this.deck.getRemainingCount()
   }
 
+  getDiscardPile(): UnoCard[] {
+    return this.deck.getDiscardPile()
+  }
+
   getDirection(): GameDirection {
     return this.direction
   }
@@ -1062,6 +1068,10 @@ export class UnoGame {
           color: this.lastActionCard.color,
           value: this.lastActionCard.value,
         } : null,
+        discardPile: this.rules.showDiscardPile ? this.deck.getDiscardPile().map(card => ({
+          color: card.color,
+          value: card.value,
+        })) : [],
       },
       roundInfo: {
         roundWinner: this.roundWinner ? {
@@ -1093,6 +1103,10 @@ export class UnoGame {
       topCard: this.getTopCard(),
       wildColor: this.wildColor,
       phase: this.phase,
+      discardPile: this.rules.showDiscardPile ? this.deck.getDiscardPile().map(card => ({
+        color: card.color,
+        value: card.value,
+      })) : [],
     }
   }
 

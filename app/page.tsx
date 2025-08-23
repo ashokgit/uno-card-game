@@ -76,10 +76,11 @@ export default function UnoGame() {
   const [feedback, setFeedback] = useState<{ message: string; type: "good" | "bad" | "great" | "perfect" } | null>(null)
   const [isAITurnAnimating, setIsAITurnAnimating] = useState(false)
   const [isLogVisible, setIsLogVisible] = useState(true)
+  const [isDiscardPileVisible, setIsDiscardPileVisible] = useState(false)
 
   useEffect(() => {
     const playerNames = ["You", "Alice", "Bob", "Carol", "Dave", "Eve"]
-    const engine = new GameEngine(playerNames, 0) // Human player at index 0
+    const engine = new GameEngine(playerNames, 0, { showDiscardPile: true }) // Human player at index 0
     setGameEngine(engine)
   }, [])
 
@@ -1018,6 +1019,18 @@ export default function UnoGame() {
           <div>Playable Cards: {players[0]?.cards.filter(c => c.isPlayable).length || 0}</div>
           <div>Can Challenge UNO: {players.slice(1).some(p => gameEngine?.canChallengeUno(`player_${p.id}`)) ? "Yes" : "No"}</div>
         </div>
+
+        <Button
+          size="sm"
+          variant="outline"
+          className="bg-black/50 text-white border-white/20 hover:bg-white/10 flex items-center gap-1"
+          onClick={() => setIsDiscardPileVisible(!isDiscardPileVisible)}
+          disabled={!gameEngine?.getRules().showDiscardPile}  // Only enable if rule is on
+          title={gameEngine?.getRules().showDiscardPile ? "Toggle Discard Pile View" : "Full Discard Pile Disabled"}
+        >
+          <Shuffle className="w-4 h-4" />
+          Discard Pile
+        </Button>
       </div>
 
       {players.slice(1).map((player) => (
@@ -1306,6 +1319,40 @@ export default function UnoGame() {
         isVisible={isLogVisible}
         onToggleVisibility={() => setIsLogVisible(!isLogVisible)}
       />
+
+      {/* Discard Pile Viewer */}
+      {isDiscardPileVisible && gameEngine?.getRules().showDiscardPile && (
+        <div className="absolute bottom-4 right-4 w-80 h-96 bg-black/70 backdrop-blur-lg rounded-2xl border border-white/20 shadow-2xl p-4 z-50 overflow-y-auto">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-white font-bold text-lg flex items-center gap-2">
+              <Shuffle className="w-5 h-5" />
+              Discard Pile ({gameEngine.getDiscardPile().length} cards)
+            </h3>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="text-white hover:text-gray-300"
+              onClick={() => setIsDiscardPileVisible(false)}
+            >
+              Close
+            </Button>
+          </div>
+          <div className="grid grid-cols-4 gap-2">
+            {gameEngine.getDiscardPile().map((card, index) => (
+              <UnoCard
+                key={index}
+                color={card.color}
+                value={card.value}
+                size="small"
+                className="shadow-md"
+              />
+            ))}
+          </div>
+          {gameEngine.getDiscardPile().length === 0 && (
+            <p className="text-white/70 text-center mt-8">Discard pile is empty</p>
+          )}
+        </div>
+      )}
     </div>
   )
 }
