@@ -186,6 +186,38 @@ export function GameLog({
         })
     }
 
+    const copyLogsToClipboard = async () => {
+        const logText = logs.map(log => {
+            const timestamp = new Date(log.timestamp).toLocaleTimeString()
+            return `[${timestamp}] ${log.message}`
+        }).join('\n')
+
+        const statsText = `
+Game Statistics:
+- Game Duration: ${Math.floor(gameDuration / 60)}:${(gameDuration % 60).toString().padStart(2, '0')}
+- Total Turns: ${stats.totalTurns}
+- Cards Played: ${stats.cardsPlayed}
+- Cards Drawn: ${stats.cardsDrawn}
+- Action Cards: ${stats.actionCardsPlayed}
+- Wild Cards: ${stats.wildCardsPlayed}
+- UNO Calls: ${stats.unoCalls}
+- Challenges: ${stats.challenges}
+- Current Direction: ${direction}
+- Top Card: ${currentCard?.value || 'None'}
+- Players: ${players.length}
+        `.trim()
+
+        const fullText = `${statsText}\n\nGame Log:\n${logText}`
+
+        try {
+            await navigator.clipboard.writeText(fullText)
+            setCopied(true)
+            setTimeout(() => setCopied(false), 2000)
+        } catch (err) {
+            console.error('Failed to copy to clipboard:', err)
+        }
+    }
+
     const getLogIcon = (type: LogEntry['type']) => {
         switch (type) {
             case 'action': return '🎮'
@@ -233,7 +265,7 @@ export function GameLog({
 
     return (
         <div className="absolute bottom-4 left-4 z-30">
-            <Card className="w-80 h-64 bg-black/60 backdrop-blur-sm border-white/20 shadow-2xl">
+            <Card className="w-96 h-80 bg-black/60 backdrop-blur-sm border-white/20 shadow-2xl">
                 <div className="p-3 border-b border-white/10">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
@@ -241,6 +273,15 @@ export function GameLog({
                             <span className="text-white text-sm font-semibold">Game Log</span>
                         </div>
                         <div className="flex items-center gap-1">
+                            <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-6 w-6 p-0 text-white/70 hover:text-white hover:bg-white/10"
+                                onClick={copyLogsToClipboard}
+                                title="Copy logs to clipboard"
+                            >
+                                {copied ? <Check className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3" />}
+                            </Button>
                             <Button
                                 size="sm"
                                 variant="ghost"
@@ -265,39 +306,39 @@ export function GameLog({
 
                 <div className="flex h-full">
                     {/* Stats Panel */}
-                    <div className="w-1/2 p-2 border-r border-white/10">
-                        <div className="space-y-2">
-                            <div className="flex items-center gap-2 text-xs text-white/80">
-                                <Clock className="w-3 h-3" />
+                    <div className="w-1/2 p-2 border-r border-white/10 overflow-y-auto">
+                        <div className="space-y-1.5">
+                            <div className="flex items-center gap-2 text-sm text-white/80">
+                                <Clock className="w-4 h-4" />
                                 <span>{Math.floor(gameDuration / 60)}:{(gameDuration % 60).toString().padStart(2, '0')}</span>
                             </div>
 
-                            <div className="space-y-1">
-                                <div className="flex justify-between text-xs">
+                            <div className="space-y-0.5">
+                                <div className="flex justify-between text-sm">
                                     <span className="text-white/70">Turns:</span>
                                     <span className="text-white">{stats.totalTurns}</span>
                                 </div>
-                                <div className="flex justify-between text-xs">
+                                <div className="flex justify-between text-sm">
                                     <span className="text-white/70">Played:</span>
                                     <span className="text-blue-300">{stats.cardsPlayed}</span>
                                 </div>
-                                <div className="flex justify-between text-xs">
+                                <div className="flex justify-between text-sm">
                                     <span className="text-white/70">Drawn:</span>
                                     <span className="text-green-300">{stats.cardsDrawn}</span>
                                 </div>
-                                <div className="flex justify-between text-xs">
+                                <div className="flex justify-between text-sm">
                                     <span className="text-white/70">Actions:</span>
                                     <span className="text-yellow-300">{stats.actionCardsPlayed}</span>
                                 </div>
-                                <div className="flex justify-between text-xs">
+                                <div className="flex justify-between text-sm">
                                     <span className="text-white/70">Wild:</span>
                                     <span className="text-purple-300">{stats.wildCardsPlayed}</span>
                                 </div>
-                                <div className="flex justify-between text-xs">
+                                <div className="flex justify-between text-sm">
                                     <span className="text-white/70">UNO:</span>
                                     <span className="text-red-300">{stats.unoCalls}</span>
                                 </div>
-                                <div className="flex justify-between text-xs">
+                                <div className="flex justify-between text-sm">
                                     <span className="text-white/70">Challenges:</span>
                                     <span className="text-orange-300">{stats.challenges}</span>
                                 </div>
@@ -305,8 +346,8 @@ export function GameLog({
 
                             {/* Current Game State */}
                             <div className="pt-2 border-t border-white/10">
-                                <div className="text-xs text-white/70 mb-1">Current State:</div>
-                                <div className="space-y-1 text-xs">
+                                <div className="text-sm text-white/70 mb-1">Current State:</div>
+                                <div className="space-y-0.5 text-sm">
                                     <div className="flex justify-between">
                                         <span className="text-white/70">Direction:</span>
                                         <span className="text-white">{direction}</span>
@@ -325,11 +366,11 @@ export function GameLog({
                     </div>
 
                     {/* Log Panel */}
-                    <div className="w-1/2 h-full">
+                    <div className="w-1/2 h-full overflow-hidden">
                         <ScrollArea ref={scrollAreaRef} className="h-full">
-                            <div className="p-2 space-y-1">
+                            <div className="p-2 space-y-0.5 max-h-full">
                                 {logs.length === 0 ? (
-                                    <div className="text-center text-white/50 text-xs py-4">
+                                    <div className="text-center text-white/50 text-sm py-4">
                                         <Info className="w-4 h-4 mx-auto mb-1" />
                                         No logs yet
                                     </div>
@@ -337,12 +378,12 @@ export function GameLog({
                                     logs.map((log) => (
                                         <div
                                             key={log.id}
-                                            className={`text-xs ${getLogColor(log.type)} flex items-start gap-1`}
+                                            className={`text-sm ${getLogColor(log.type)} flex items-start gap-1 py-1`}
                                         >
                                             <span className="flex-shrink-0">{getLogIcon(log.type)}</span>
                                             <div className="flex-1 min-w-0">
-                                                <div className="truncate">{log.message}</div>
-                                                <div className="text-white/50 text-xs">
+                                                <div className="truncate leading-tight">{log.message}</div>
+                                                <div className="text-white/50 text-xs leading-tight">
                                                     {formatTime(log.timestamp)}
                                                 </div>
                                             </div>
