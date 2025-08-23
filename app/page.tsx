@@ -1186,9 +1186,9 @@ export default function UnoGame() {
       {gameEngine?.isGameOver() && (
         <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-50">
           <Card className="p-8 bg-gradient-to-r from-yellow-400 to-orange-500 text-black text-center shadow-2xl">
-            <h2 className="text-4xl font-bold mb-4">🎉 Game Over! 🎉</h2>
-            <p className="text-2xl font-semibold mb-6">{gameEngine.getRoundWinner()?.name || 'Unknown'} Wins!</p>
-            <Button onClick={() => window.location.reload()} className="bg-black text-white hover:bg-gray-800">
+            <h2 className="text-4xl font-bold mb-4 font-gaming">🎉 Game Over! 🎉</h2>
+            <p className="text-2xl font-semibold mb-6 font-gaming-secondary">{gameEngine.getRoundWinner()?.name || 'Unknown'} Wins!</p>
+            <Button onClick={() => window.location.reload()} className="bg-black text-white hover:bg-gray-800 font-gaming-secondary">
               Play Again
             </Button>
           </Card>
@@ -1234,7 +1234,7 @@ export default function UnoGame() {
         <div className="absolute top-8 left-1/2 transform -translate-x-1/2 z-[9999] pointer-events-none">
           <div
             className={`
-            px-6 py-4 rounded-2xl shadow-2xl border-2 animate-bounce text-center font-bold text-lg
+            px-6 py-4 rounded-2xl shadow-2xl border-2 animate-bounce text-center font-bold text-lg font-gaming-secondary
             ${feedback.type === "perfect" ? "bg-gradient-to-r from-yellow-400 to-orange-500 text-black border-yellow-300" : ""}
             ${feedback.type === "great" ? "bg-gradient-to-r from-green-500 to-emerald-500 text-white border-green-300" : ""}
             ${feedback.type === "good" ? "bg-gradient-to-r from-blue-500 to-cyan-500 text-white border-blue-300" : ""}
@@ -1304,12 +1304,12 @@ export default function UnoGame() {
       <div className="absolute top-4 right-4 flex items-center gap-3 z-10">
         <Badge
           variant="secondary"
-          className="text-sm font-bold bg-black/50 text-white border-white/20 flex items-center gap-1"
+          className="text-sm font-bold bg-black/50 text-white border-white/20 flex items-center gap-1 font-gaming-secondary"
         >
           <Trophy className="w-4 h-4" />
           {gameState.level}
         </Badge>
-        <Badge variant="outline" className="text-sm bg-black/50 text-white border-white/20 flex items-center gap-1">
+        <Badge variant="outline" className="text-sm bg-black/50 text-white border-white/20 flex items-center gap-1 font-gaming-secondary">
           <Coins className="w-4 h-4" />
           {gameState.coins}
         </Badge>
@@ -1317,6 +1317,11 @@ export default function UnoGame() {
 
       {/* Center Game Area */}
       <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-40">
+        {/* Uno Arena Imprinted Text */}
+        <div className="uno-arena-text font-gaming">
+          UNO ARENA
+        </div>
+
         <div className="flex items-center gap-8">
           <div className="relative" data-deck>
             <Card
@@ -1533,7 +1538,7 @@ export default function UnoGame() {
               )}
             </div>
             <div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
-              <Badge className="bg-yellow-400 text-black animate-bounce font-bold shadow-xl flex items-center gap-2 px-3 py-1">
+              <Badge className="bg-yellow-400 text-black animate-bounce font-bold shadow-xl flex items-center gap-2 px-3 py-1 font-gaming-secondary">
                 <ArrowRight className="w-4 h-4" />
                 Current Card
               </Badge>
@@ -1542,17 +1547,17 @@ export default function UnoGame() {
         </div>
 
         <div className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 z-20 flex flex-col gap-2">
-          <Badge variant="outline" className="text-xs bg-black/50 text-white border-white/20 flex items-center gap-1">
+          <Badge variant="outline" className="text-xs bg-black/50 text-white border-white/20 flex items-center gap-1 font-gaming-secondary">
             {direction === "clockwise" ? <RotateCw className="w-3 h-3" /> : <RotateCcw className="w-3 h-3" />}
             {direction}
           </Badge>
           {gameEngine?.getDrawPenalty() > 0 && (
-            <Badge className="text-xs bg-red-500 text-white animate-pulse">
+            <Badge className="text-xs bg-red-500 text-white animate-pulse font-gaming-secondary">
               Draw {gameEngine.getDrawPenalty()} cards!
             </Badge>
           )}
           {gameEngine?.getLastActionCard() && gameEngine.getDrawPenalty() > 0 && (
-            <Badge className="text-xs bg-orange-500 text-white">
+            <Badge className="text-xs bg-orange-500 text-white font-gaming-secondary">
               Stackable: {gameEngine.getLastActionCard()?.value}
             </Badge>
           )}
@@ -1682,7 +1687,7 @@ export default function UnoGame() {
       <div className="absolute bottom-8 right-8 flex flex-col gap-4 z-40">
         <Button
           size="lg"
-          className="bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 text-white font-bold shadow-xl hover:shadow-2xl hover:shadow-blue-400/50 flex items-center gap-2 disabled:opacity-50 transition-all duration-300 min-h-[44px]"
+          className="bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 text-white font-bold shadow-xl hover:shadow-2xl hover:shadow-blue-400/50 flex items-center gap-2 disabled:opacity-50 transition-all duration-300 min-h-[44px] font-gaming-secondary"
           onClick={drawCard}
           disabled={
             !players[0]?.isActive ||
@@ -1708,7 +1713,7 @@ export default function UnoGame() {
         </Button>
         <Button
           size="lg"
-          className="bg-gradient-to-r from-red-600 to-red-500 hover:from-red-700 hover:to-red-600 text-white font-bold shadow-xl hover:shadow-2xl hover:shadow-red-400/50 flex items-center gap-2 transition-all duration-300 min-h-[44px]"
+          className="bg-gradient-to-r from-red-600 to-red-500 hover:from-red-700 hover:to-red-600 text-white font-bold shadow-xl hover:shadow-2xl hover:shadow-red-400/50 flex items-center gap-2 transition-all duration-300 min-h-[44px] font-gaming-secondary"
           onClick={callUno}
           disabled={!players[0] || players[0].cardCount !== 1}
           title={

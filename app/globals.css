@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;500;600;700&display=swap');
 @import "tailwindcss";
 @import "tw-animate-css";
 
@@ -558,4 +559,75 @@
   50% { 
     box-shadow: 0 0 40px rgba(255,215,0,0.8);
   }
+}
+
+/* Uno Arena Imprinted Text Styles */
+.uno-arena-text {
+  font-family: 'Orbitron', monospace;
+  font-weight: 900;
+  font-size: 4rem;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: rgba(0, 0, 0, 0.15);
+  text-shadow: 
+    2px 2px 4px rgba(0, 0, 0, 0.3),
+    -2px -2px 4px rgba(255, 255, 255, 0.1);
+  transform: rotate(-5deg);
+  position: absolute;
+  top: calc(50% + 350px);
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(-5deg);
+  z-index: 1;
+  pointer-events: none;
+  white-space: nowrap;
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.2));
+}
+
+.uno-arena-text::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    45deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.1) 50%,
+    transparent 70%
+  );
+  animation: shimmer 3s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes shimmer {
+  0%, 100% {
+    transform: translateX(-100%);
+  }
+  50% {
+    transform: translateX(100%);
+  }
+}
+
+/* Gaming font utility classes */
+.font-gaming {
+  font-family: 'Orbitron', monospace;
+}
+
+.font-gaming-secondary {
+  font-family: 'Rajdhani', sans-serif;
+}
+
+/* Enhanced table text effects */
+.table-text-glow {
+  text-shadow: 
+    0 0 10px rgba(255, 255, 255, 0.3),
+    0 0 20px rgba(255, 255, 255, 0.2),
+    0 0 30px rgba(255, 255, 255, 0.1);
+}
+
+.table-text-emboss {
+  text-shadow: 
+    1px 1px 0px rgba(255, 255, 255, 0.2),
+    -1px -1px 0px rgba(0, 0, 0, 0.2);
 }
