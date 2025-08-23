@@ -1407,24 +1407,9 @@ export default function UnoGame() {
               transform: `translate(-50%, -50%) ${player.isActive ? "scale(1.1)" : "scale(1.0)"}`,
             }}
           >
-            <div className={`flex flex-col items-center gap-3 ${player.isActive ? "animate-pulse" : ""} pointer-events-auto p-2 rounded-lg ${player.isActive ? "bg-yellow-400/10" : "bg-white/5"} shadow-lg`}>
+            <div className={`flex flex-col items-center gap-3 ${player.isActive ? "animate-pulse" : ""} pointer-events-auto`}>
 
-              {player.isActive && (
-                <div className="absolute -top-20 left-1/2 transform -translate-x-1/2 z-10">
-                  <Card className="p-3 bg-gradient-to-r from-yellow-500 to-orange-500 text-black shadow-2xl animate-bounce border border-white/30 scale-125">
-                    <p className="text-sm font-bold flex items-center gap-1 drop-shadow-lg">
-                      <Brain className="w-4 h-4" />
-                      {player.name}'s Turn
-                    </p>
-                    <p className="text-xs opacity-90 flex items-center gap-1 drop-shadow-md">
-                      <Clock className="w-3 h-3" />
-                      {gameEngine?.getPhase() === "waiting" ? "Thinking..." : "Playing..."}
-                    </p>
-                  </Card>
-                  {/* Enhanced spotlight effect */}
-                  <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 w-32 h-32 bg-gradient-radial from-yellow-400/40 via-yellow-400/20 to-transparent rounded-full blur-xl animate-pulse"></div>
-                </div>
-              )}
+
 
               {/* Opponent Cards Display */}
               <div className="flex gap-[-15px] transform-origin-center mb-2">
@@ -1475,7 +1460,7 @@ export default function UnoGame() {
                 )}
               </div>
 
-              <div className="text-center bg-black/40 backdrop-blur-sm rounded-lg px-2 py-1 border border-white/20">
+              <div className="text-center">
                 <p
                   className={`font-semibold text-white drop-shadow-lg transition-all duration-300 ${player.isActive ? "text-sm" : "text-xs"
                     }`}
@@ -1642,7 +1627,17 @@ export default function UnoGame() {
 
 
 
-          {/* Challenge buttons for other players */}
+
+        </div>
+      </div>
+
+
+
+
+
+      {/* Challenge Buttons - Fixed Position Above Player Hand */}
+      <div className="absolute bottom-[55vh] left-1/2 transform -translate-x-1/2 z-30">
+        <div className="flex flex-wrap justify-center gap-2 max-w-md">
           {players.slice(1).map((player) => {
             const canChallengeUno = gameEngine?.canChallengeUno(`player_${player.id}`)
             const canChallengeWildDrawFour = gameEngine?.canChallengeWildDrawFour(`player_${player.id}`)
@@ -1650,27 +1645,27 @@ export default function UnoGame() {
             if (!canChallengeUno && !canChallengeWildDrawFour) return null
 
             return (
-              <div key={player.id} className="flex justify-center gap-3 mt-3">
+              <div key={player.id} className="flex gap-2">
                 {canChallengeUno && (
                   <Button
                     size="sm"
                     variant="outline"
-                    className="bg-yellow-500/20 text-yellow-300 border-yellow-500 hover:bg-yellow-500/30 text-sm hover:shadow-lg hover:shadow-yellow-400/30 transition-all duration-300"
+                    className="bg-yellow-500/20 text-yellow-300 border-yellow-500 hover:bg-yellow-500/30 text-xs hover:shadow-lg hover:shadow-yellow-400/30 transition-all duration-300"
                     onClick={() => challengeUno(`player_${player.id}`)}
                     disabled={playDelay}
                   >
-                    Challenge UNO
+                    Challenge {player.name} UNO
                   </Button>
                 )}
                 {canChallengeWildDrawFour && (
                   <Button
                     size="sm"
                     variant="outline"
-                    className="bg-purple-500/20 text-purple-300 border-purple-500 hover:bg-purple-500/30 text-sm hover:shadow-lg hover:shadow-purple-400/30 transition-all duration-300"
+                    className="bg-purple-500/20 text-purple-300 border-purple-500 hover:bg-purple-500/30 text-xs hover:shadow-lg hover:shadow-purple-400/30 transition-all duration-300"
                     onClick={() => challengeWildDrawFour(`player_${player.id}`)}
                     disabled={playDelay}
                   >
-                    Challenge +4
+                    Challenge {player.name} +4
                   </Button>
                 )}
               </div>
@@ -1678,10 +1673,6 @@ export default function UnoGame() {
           })}
         </div>
       </div>
-
-
-
-
 
       {/* Action Buttons - Bottom Right Corner */}
       <div className="absolute bottom-8 right-8 flex flex-col gap-4 z-40">
