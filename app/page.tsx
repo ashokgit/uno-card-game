@@ -46,7 +46,17 @@ interface AnimatedCard {
   startY: number
   endX: number
   endY: number
+  currentX: number
+  currentY: number
   isAnimating: boolean
+  type: 'throw' | 'draw' | 'deal' | 'land'
+  rotation: number
+  scale: number
+  zIndex: number
+  trajectory: 'arc' | 'straight' | 'bounce'
+  duration: number
+  delay: number
+  startTime: number
 }
 
 export default function UnoGame() {
@@ -113,12 +123,12 @@ export default function UnoGame() {
 
   const getPlayerPosition = (index: number) => {
     const positions = [
-      { top: "90%", left: "50%" }, // User
-      { top: "10%", left: "50%" }, // Alice
-      { top: "25%", left: "80%" }, // Bob
-      { top: "60%", left: "85%" }, // Carol
-      { top: "85%", left: "50%" }, // Dave
-      { top: "60%", left: "15%" }, // Eve
+      { top: "92%", left: "50%" }, // User (bottom center)
+      { top: "8%", left: "50%" },  // Alice (top center)
+      { top: "20%", left: "85%" }, // Bob (top right)
+      { top: "50%", left: "90%" }, // Carol (right center)
+      { top: "80%", left: "85%" }, // Dave (bottom right)
+      { top: "50%", left: "10%" }, // Eve (left center)
     ]
     return positions[index] || { top: "50%", left: "50%" }
   }
@@ -192,6 +202,7 @@ export default function UnoGame() {
         startY = cardRect.top + cardRect.height / 2
       }
 
+      // Create realistic throwing animation
       const animatedCard: AnimatedCard = {
         id: Date.now() + Math.random(),
         card: cardToPlay,
@@ -199,16 +210,29 @@ export default function UnoGame() {
         startY,
         endX: centerRect.left + centerRect.width / 2,
         endY: centerRect.top + centerRect.height / 2,
+        currentX: startX,
+        currentY: startY,
         isAnimating: true,
+        type: 'throw',
+        rotation: Math.random() * 360 - 180, // Random rotation for realistic effect
+        scale: 1.2,
+        zIndex: 10000,
+        trajectory: 'arc', // Use arc trajectory for throwing effect
+        duration: 2000,
+        delay: 0,
+        startTime: Date.now(),
       }
 
       setAnimatedCards((prev) => [...prev, animatedCard])
 
-      setTimeout(() => {
-        setAnimatedCards((prev) => prev.filter((card) => card.id !== animatedCard.id))
-      }, 2000)
+      // Play card flip sound at start
+      playSound("card-flip")
+
+      // Animation will be handled by the useEffect animation frame
+      // Cards will be removed automatically when animation completes
     }
 
+    // Delay game state update until animation completes
     setTimeout(() => {
       let chosenColor: "red" | "blue" | "green" | "yellow" | undefined
       if (cardToPlay.color === "wild") {
@@ -236,15 +260,63 @@ export default function UnoGame() {
 
       setIsAnimating(false)
       setPlayDelay(false)
-    }, 2000)
+    }, 2100) // Slightly longer than animation duration
   }
 
   const drawCard = () => {
     if (!gameEngine || playDelay || !players[0]?.isActive) return
 
+    // Check if player has playable cards
+    const topCard = gameEngine.getTopCard()
+    if (topCard) {
+      const playableCards = players[0]?.cards.filter(card => card.isPlayable) || []
+      if (playableCards.length > 0) {
+        console.log("[v0] Cannot draw - player has playable cards:", playableCards.length)
+        return
+      }
+    }
+
     playSound("draw")
     setPlayDelay(true)
 
+    // Create drawing animation
+    const deckElement = document.querySelector("[data-deck]")
+    const userHandElement = document.querySelector("[data-user-hand]")
+
+    if (deckElement && userHandElement) {
+      const deckRect = deckElement.getBoundingClientRect()
+      const handRect = userHandElement.getBoundingClientRect()
+
+      const animatedCard: AnimatedCard = {
+        id: Date.now() + Math.random(),
+        card: { id: Math.random(), color: "red", value: "?", isPlayable: false },
+        startX: deckRect.left + deckRect.width / 2,
+        startY: deckRect.top + deckRect.height / 2,
+        endX: handRect.left + handRect.width / 2,
+        endY: handRect.top + handRect.height / 2,
+        currentX: deckRect.left + deckRect.width / 2,
+        currentY: deckRect.top + deckRect.height / 2,
+        isAnimating: true,
+        type: 'draw',
+        rotation: 0,
+        scale: 1,
+        zIndex: 9999,
+        trajectory: 'straight',
+        duration: 1500,
+        delay: 0,
+        startTime: Date.now(),
+      }
+
+      setAnimatedCards((prev) => [...prev, animatedCard])
+
+      // Play card flip sound at start
+      playSound("card-flip")
+
+      // Animation will be handled by the useEffect animation frame
+      // Cards will be removed automatically when animation completes
+    }
+
+    // Delay game state update until animation completes
     setTimeout(() => {
       const drawnCard = gameEngine.drawCard("player_0")
       console.log("[v0] User draw result, New current player:", gameEngine.getCurrentPlayer().name)
@@ -256,11 +328,11 @@ export default function UnoGame() {
       setCurrentPlayerId(gameEngine.getCurrentPlayer().id)
 
       setPlayDelay(false)
-    }, 800)
+    }, 1600) // Slightly longer than animation duration
   }
 
   const callUno = () => {
-    if (!gameEngine || !players[0]?.hasOneCard()) return
+    if (!gameEngine || players[0]?.cardCount !== 1) return
     playSound("uno")
     gameEngine.callUno("player_0")
   }
@@ -326,6 +398,7 @@ export default function UnoGame() {
       const aiPlayerRect = aiPlayerElement.getBoundingClientRect()
       const centerRect = centerElement.getBoundingClientRect()
 
+      // Create AI card throwing animation with realistic physics
       const animatedCard: AnimatedCard = {
         id: Date.now() + currentPlayerIndex,
         card: { id: Math.random(), color: "red", value: 5, isPlayable: false },
@@ -333,16 +406,29 @@ export default function UnoGame() {
         startY: aiPlayerRect.top + aiPlayerRect.height / 2,
         endX: centerRect.left + centerRect.width / 2,
         endY: centerRect.top + centerRect.height / 2,
+        currentX: aiPlayerRect.left + aiPlayerRect.width / 2,
+        currentY: aiPlayerRect.top + aiPlayerRect.height / 2,
         isAnimating: true,
+        type: 'throw',
+        rotation: Math.random() * 720 - 360, // More dramatic rotation for AI
+        scale: 1.3,
+        zIndex: 10000,
+        trajectory: 'arc', // Use arc for more dramatic AI throws
+        duration: 2500,
+        delay: 0,
+        startTime: Date.now(),
       }
 
       setAnimatedCards((prev) => [...prev, animatedCard])
 
-      setTimeout(() => {
-        setAnimatedCards((prev) => prev.filter((card) => card.id !== animatedCard.id))
-      }, 1500)
+      // Play card flip sound at start
+      playSound("card-flip")
+
+      // Animation will be handled by the useEffect animation frame
+      // Cards will be removed automatically when animation completes
     }
 
+    // Delay game state update until animation completes
     setTimeout(() => {
       const success = gameEngine.playAITurn()
       console.log("[v0] AI turn result:", success, "New current player:", gameEngine.getCurrentPlayer().name)
@@ -352,7 +438,7 @@ export default function UnoGame() {
       setCurrentCard(gameData.currentCard)
       setDirection(gameData.direction)
       setCurrentPlayerId(gameEngine.getCurrentPlayer().id)
-    }, 800)
+    }, 2600) // Slightly longer than animation duration
   }
 
   const canPlayCard = (card: GameCard, topCard: GameCard): boolean => {
@@ -366,7 +452,7 @@ export default function UnoGame() {
     return false
   }
 
-  const playSound = (type: "play" | "draw" | "win" | "uno" | "special" | "shuffle") => {
+  const playSound = (type: "play" | "draw" | "win" | "uno" | "special" | "shuffle" | "card-flip" | "card-land") => {
     const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
 
     const createSound = (frequency: number, duration: number, type: OscillatorType = "sine", volume = 0.3) => {
@@ -431,6 +517,17 @@ export default function UnoGame() {
           }, i * 50)
         }
         break
+
+      case "card-flip":
+        // Card flip sound - crisp and quick
+        createSound(500, 0.08, "sine", 0.1)
+        setTimeout(() => createSound(700, 0.08, "sine", 0.1), 50)
+        break
+
+      case "card-land":
+        // Card landing sound - soft thud
+        createSound(300, 0.12, "sawtooth", 0.15)
+        break
     }
   }
 
@@ -451,6 +548,50 @@ export default function UnoGame() {
       updatePlayableCards()
     }
   }, [gameEngine, currentCard])
+
+  // Animation frame update for smooth card movement
+  useEffect(() => {
+    if (animatedCards.length === 0) return
+
+    const animate = () => {
+      setAnimatedCards(prev => {
+        const updated = prev.map(card => {
+          if (!card.isAnimating) return card
+
+          const elapsed = Date.now() - card.startTime
+          const progress = Math.min(elapsed / card.duration, 1)
+
+          if (progress >= 1) {
+            // Animation complete
+            if (card.type === 'throw' || card.type === 'draw') {
+              playSound("card-land")
+            }
+            return { ...card, isAnimating: false, currentX: card.endX, currentY: card.endY, type: 'land' as any }
+          }
+
+          // Simple linear interpolation for smooth movement
+          const currentX = card.startX + (card.endX - card.startX) * progress
+          const currentY = card.startY + (card.endY - card.startY) * progress
+
+          return { ...card, currentX, currentY }
+        })
+
+        // Remove completed animations
+        const completed = updated.filter(card => !card.isAnimating && card.type === 'land')
+        if (completed.length > 0) {
+          setTimeout(() => {
+            setAnimatedCards(current => current.filter(card => card.isAnimating || card.type !== 'land'))
+          }, 500)
+        }
+
+        return updated
+      })
+    }
+
+    const intervalId = setInterval(animate, 16) // ~60fps
+
+    return () => clearInterval(intervalId)
+  }, [animatedCards.length])
 
   const renderCardContent = (card: GameCard, size: "small" | "medium" | "large" = "medium") => {
     const sizeClasses = {
@@ -599,39 +740,112 @@ export default function UnoGame() {
         ></div>
       </div>
 
-      {animatedCards.map((animatedCard) => (
-        <div
-          key={animatedCard.id}
-          className="fixed pointer-events-none z-[10000]"
-          style={{
-            left: animatedCard.startX - 50,
-            top: animatedCard.startY - 70,
-            transform: animatedCard.isAnimating
-              ? `translate(${animatedCard.endX - animatedCard.startX}px, ${animatedCard.endY - animatedCard.startY}px) rotate(720deg) scale(1.5)`
-              : "none",
-            transition: "all 2s cubic-bezier(0.25, 0.46, 0.45, 0.94)",
-          }}
-        >
-          <div className="relative">
-            <UnoCard
-              color={animatedCard.card.color}
-              value={animatedCard.card.value}
-              size="medium"
-              className="shadow-2xl border-4 border-yellow-400 animate-pulse drop-shadow-2xl"
-            />
-            <div className="absolute inset-0 bg-yellow-400/50 rounded-lg blur-lg animate-pulse"></div>
-            <div className="absolute inset-0 bg-white/30 rounded-lg blur-md animate-ping"></div>
-            <div className="absolute inset-0 bg-red-400/40 rounded-lg blur-sm animate-bounce"></div>
-            <div className="absolute inset-0 bg-gradient-to-r from-yellow-400/60 to-orange-400/60 rounded-lg blur-xl animate-pulse"></div>
+      {animatedCards.map((animatedCard) => {
+        const getAnimationStyle = () => {
+          // Use the current position that's being updated by the animation frame
+          const currentX = animatedCard.currentX || animatedCard.startX
+          const currentY = animatedCard.currentY || animatedCard.startY
+
+          // Calculate rotation and scale based on animation type
+          let rotation = 0
+          let scale = animatedCard.scale || 1
+
+          if (animatedCard.isAnimating) {
+            const elapsed = Date.now() - animatedCard.startTime
+            const progress = Math.min(elapsed / animatedCard.duration, 1)
+
+            if (animatedCard.type === 'throw') {
+              rotation = (animatedCard.rotation || 0) * progress
+              if (animatedCard.trajectory === 'arc') {
+                scale = (animatedCard.scale || 1) + Math.sin(progress * Math.PI) * 0.2
+              }
+            } else if (animatedCard.type === 'draw') {
+              rotation = Math.sin(progress * Math.PI * 4) * 15
+            }
+          }
+
+          return {
+            left: currentX - 50,
+            top: currentY - 70,
+            zIndex: animatedCard.zIndex,
+            transform: `rotate(${rotation}deg) scale(${scale})`,
+            transition: 'none',
+            position: 'fixed' as const,
+            pointerEvents: 'none' as const,
+          }
+        }
+
+        const getGlowEffect = () => {
+          switch (animatedCard.type) {
+            case 'throw':
+              return 'shadow-2xl border-4 border-yellow-400 animate-pulse drop-shadow-2xl'
+            case 'draw':
+              return 'shadow-xl border-2 border-blue-400 animate-pulse drop-shadow-xl'
+            case 'land':
+              return 'shadow-lg border-2 border-green-400 animate-card-land'
+            default:
+              return 'shadow-lg border-2 border-white/50'
+          }
+        }
+
+        return (
+          <div
+            key={animatedCard.id}
+            className="fixed pointer-events-none"
+            style={getAnimationStyle()}
+          >
+            <div className="relative">
+              <UnoCard
+                color={animatedCard.card.color}
+                value={animatedCard.card.value}
+                size="medium"
+                className={getGlowEffect()}
+              />
+
+              {/* Enhanced glow effects based on animation type */}
+              {animatedCard.type === 'throw' && (
+                <>
+                  <div className="absolute inset-0 bg-yellow-400/50 rounded-lg blur-lg animate-pulse"></div>
+                  <div className="absolute inset-0 bg-white/30 rounded-lg blur-md animate-ping"></div>
+                  <div className="absolute inset-0 bg-red-400/40 rounded-lg blur-sm animate-bounce"></div>
+                  <div className="absolute inset-0 bg-gradient-to-r from-yellow-400/60 to-orange-400/60 rounded-lg blur-xl animate-pulse"></div>
+                </>
+              )}
+
+              {animatedCard.type === 'draw' && (
+                <>
+                  <div className="absolute inset-0 bg-blue-400/40 rounded-lg blur-lg animate-pulse"></div>
+                  <div className="absolute inset-0 bg-cyan-300/30 rounded-lg blur-md animate-ping"></div>
+                  <div className="absolute inset-0 bg-gradient-to-r from-blue-400/50 to-cyan-400/50 rounded-lg blur-xl animate-pulse"></div>
+                </>
+              )}
+
+              {/* Enhanced particle trail effects */}
+              {animatedCard.type === 'throw' && (
+                <>
+                  <div className="absolute -top-2 -left-2 w-4 h-4 bg-yellow-400/60 rounded-full animate-ping"></div>
+                  <div className="absolute -top-1 -right-1 w-3 h-3 bg-orange-400/50 rounded-full animate-ping" style={{ animationDelay: '0.2s' }}></div>
+                  <div className="absolute -bottom-1 left-1/2 w-2 h-2 bg-red-400/40 rounded-full animate-ping" style={{ animationDelay: '0.4s' }}></div>
+                  <div className="absolute top-1/2 -right-2 w-2 h-2 bg-yellow-300/50 rounded-full animate-ping" style={{ animationDelay: '0.6s' }}></div>
+                </>
+              )}
+
+              {animatedCard.type === 'draw' && (
+                <>
+                  <div className="absolute -top-1 -left-1 w-3 h-3 bg-blue-400/50 rounded-full animate-ping"></div>
+                  <div className="absolute -bottom-1 -right-1 w-2 h-2 bg-cyan-400/40 rounded-full animate-ping" style={{ animationDelay: '0.3s' }}></div>
+                </>
+              )}
+            </div>
           </div>
-        </div>
-      ))}
+        )
+      })}
 
       {gameEngine?.isGameOver() && (
         <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-50">
           <Card className="p-8 bg-gradient-to-r from-yellow-400 to-orange-500 text-black text-center shadow-2xl">
             <h2 className="text-4xl font-bold mb-4">🎉 Game Over! 🎉</h2>
-            <p className="text-2xl font-semibold mb-6">{gameEngine.getRoundWinner()} Wins!</p>
+            <p className="text-2xl font-semibold mb-6">{gameEngine.getRoundWinner()?.name || 'Unknown'} Wins!</p>
             <Button onClick={() => window.location.reload()} className="bg-black text-white hover:bg-gray-800">
               Play Again
             </Button>
@@ -670,6 +884,14 @@ export default function UnoGame() {
           <Coins className="w-4 h-4" />
           {gameState.coins}
         </Badge>
+
+        {/* Debug Info Panel */}
+        <div className="bg-black/70 text-white p-2 rounded-lg text-xs">
+          <div>Draw Penalty: {gameEngine?.getDrawPenalty() || 0}</div>
+          <div>Last Action: {gameEngine?.getLastActionCard()?.value || "None"}</div>
+          <div>Playable Cards: {players[0]?.cards.filter(c => c.isPlayable).length || 0}</div>
+          <div>Can Challenge UNO: {players.slice(1).some(p => gameEngine?.canChallengeUno(`player_${p.id}`)) ? "Yes" : "No"}</div>
+        </div>
       </div>
 
       {players.slice(1).map((player) => (
@@ -680,7 +902,7 @@ export default function UnoGame() {
           style={{
             top: player.position.top,
             left: player.position.left,
-            transform: `translate(-50%, -50%) ${player.isActive ? "scale(1.2)" : "scale(1.0)"}`,
+            transform: `translate(-50%, -50%) ${player.isActive ? "scale(1.1)" : "scale(1.0)"}`,
           }}
         >
           <div className={`flex flex-col items-center gap-2 ${player.isActive ? "animate-pulse" : ""}`}>
@@ -703,7 +925,7 @@ export default function UnoGame() {
                 }`}
             >
               <Avatar
-                className={`border-2 border-white/30 shadow-lg transition-all duration-300 ${player.isActive ? "w-16 h-16" : "w-12 h-12"
+                className={`border-2 border-white/30 shadow-lg transition-all duration-300 ${player.isActive ? "w-16 h-16" : "w-14 h-14"
                   }`}
               >
                 <AvatarImage src={player.avatar || "/placeholder.svg"} alt={player.name} />
@@ -743,7 +965,7 @@ export default function UnoGame() {
 
       <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-10">
         <div className="flex items-center gap-8">
-          <div className="relative">
+          <div className="relative" data-deck>
             <Card
               className={`w-20 h-28 bg-gradient-to-br from-red-600 to-red-800 border-2 border-white/30 shadow-2xl transform rotate-2 cursor-pointer transition-transform ${playDelay ? "opacity-50" : "hover:scale-105"
                 }`}
@@ -765,13 +987,18 @@ export default function UnoGame() {
             <div
               className={`transform -rotate-1 transition-all duration-500 ${isAnimating ? "scale-110 rotate-12" : ""}`}
             >
-              {currentCard && (
+              {currentCard && !isAnimating && (
                 <UnoCard
                   color={currentCard.color}
                   value={currentCard.value}
                   size="medium"
                   className="shadow-2xl border-white/30"
                 />
+              )}
+              {isAnimating && (
+                <div className="w-20 h-28 bg-gradient-to-br from-gray-600 to-gray-800 border-2 border-white/30 shadow-2xl rounded-lg flex items-center justify-center">
+                  <div className="w-4 h-4 bg-white/40 rounded-full animate-pulse"></div>
+                </div>
               )}
             </div>
             <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
@@ -793,6 +1020,11 @@ export default function UnoGame() {
               Draw {gameEngine.getDrawPenalty()} cards!
             </Badge>
           )}
+          {gameEngine?.getLastActionCard() && gameEngine.getDrawPenalty() > 0 && (
+            <Badge className="text-xs bg-orange-500 text-white">
+              Stackable: {gameEngine.getLastActionCard()?.value}
+            </Badge>
+          )}
         </div>
       </div>
 
@@ -803,10 +1035,10 @@ export default function UnoGame() {
               key={card.id}
               data-card-id={card.id}
               className={`transition-all duration-300 ${card.isPlayable && players[0]?.isActive && !playDelay
-                  ? "hover:scale-110 hover:-translate-y-2 cursor-pointer"
-                  : card.isPlayable
-                    ? "cursor-pointer"
-                    : "opacity-60"
+                ? "hover:scale-110 hover:-translate-y-2 cursor-pointer"
+                : card.isPlayable
+                  ? "cursor-pointer"
+                  : "opacity-60"
                 }`}
               style={{ transform: `rotate(${(index - 2) * 3}deg)` }}
               onClick={() => {
@@ -841,7 +1073,23 @@ export default function UnoGame() {
             size="sm"
             className="bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 text-white font-bold shadow-lg flex items-center gap-1 disabled:opacity-50"
             onClick={drawCard}
-            disabled={!players[0]?.isActive || gameEngine?.getDeckCount() <= 0 || playDelay}
+            disabled={
+              !players[0]?.isActive ||
+              gameEngine?.getDeckCount() <= 0 ||
+              playDelay ||
+              (players[0]?.cards.some(card => card.isPlayable) || false)
+            }
+            title={
+              !players[0]?.isActive
+                ? "Not your turn"
+                : gameEngine?.getDeckCount() <= 0
+                  ? "No cards left to draw"
+                  : playDelay
+                    ? "Please wait"
+                    : (players[0]?.cards.some(card => card.isPlayable) || false)
+                      ? "You have playable cards - play them first!"
+                      : "Draw a card"
+            }
           >
             <Plus className="w-4 h-4" />
             Draw Card
@@ -851,6 +1099,13 @@ export default function UnoGame() {
             className="bg-gradient-to-r from-red-600 to-red-500 hover:from-red-700 hover:to-red-600 text-white font-bold shadow-lg flex items-center gap-1"
             onClick={callUno}
             disabled={!players[0] || players[0].cardCount !== 1}
+            title={
+              !players[0]
+                ? "No player data"
+                : players[0].cardCount !== 1
+                  ? `Call UNO when you have exactly 1 card (you have ${players[0].cardCount})`
+                  : "Call UNO!"
+            }
           >
             <Zap className="w-4 h-4" />
             UNO!
@@ -858,32 +1113,39 @@ export default function UnoGame() {
         </div>
 
         {/* Challenge buttons for other players */}
-        {players.slice(1).map((player) => (
-          <div key={player.id} className="flex justify-center gap-2 mt-2">
-            {gameEngine?.canChallengeUno(`player_${player.id}`) && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="bg-yellow-500/20 text-yellow-300 border-yellow-500 hover:bg-yellow-500/30 text-xs"
-                onClick={() => challengeUno(`player_${player.id}`)}
-                disabled={playDelay}
-              >
-                Challenge UNO
-              </Button>
-            )}
-            {gameEngine?.canChallengeWildDrawFour(`player_${player.id}`) && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="bg-purple-500/20 text-purple-300 border-purple-500 hover:bg-purple-500/30 text-xs"
-                onClick={() => challengeWildDrawFour(`player_${player.id}`)}
-                disabled={playDelay}
-              >
-                Challenge +4
-              </Button>
-            )}
-          </div>
-        ))}
+        {players.slice(1).map((player) => {
+          const canChallengeUno = gameEngine?.canChallengeUno(`player_${player.id}`)
+          const canChallengeWildDrawFour = gameEngine?.canChallengeWildDrawFour(`player_${player.id}`)
+
+          if (!canChallengeUno && !canChallengeWildDrawFour) return null
+
+          return (
+            <div key={player.id} className="flex justify-center gap-2 mt-2">
+              {canChallengeUno && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="bg-yellow-500/20 text-yellow-300 border-yellow-500 hover:bg-yellow-500/30 text-xs"
+                  onClick={() => challengeUno(`player_${player.id}`)}
+                  disabled={playDelay}
+                >
+                  Challenge UNO
+                </Button>
+              )}
+              {canChallengeWildDrawFour && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="bg-purple-500/20 text-purple-300 border-purple-500 hover:bg-purple-500/30 text-xs"
+                  onClick={() => challengeWildDrawFour(`player_${player.id}`)}
+                  disabled={playDelay}
+                >
+                  Challenge +4
+                </Button>
+              )}
+            </div>
+          )
+        })}
       </div>
 
       {players[0]?.isActive && (
