@@ -15,7 +15,9 @@ import {
     Eye,
     EyeOff,
     Trash2,
-    Info
+    Info,
+    Copy,
+    Check
 } from "lucide-react"
 import { UnoGame } from "@/lib/uno-engine"
 
@@ -57,6 +59,7 @@ export function GameLog({
         gameStartTime: Date.now(),
     })
     const scrollAreaRef = useRef<HTMLDivElement>(null)
+    const [copied, setCopied] = useState(false)
 
     // Auto-scroll to bottom when new logs are added
     useEffect(() => {
