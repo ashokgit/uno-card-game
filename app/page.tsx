@@ -20,7 +20,8 @@ import {
   Brain,
   Clock,
 } from "lucide-react"
-import { UnoGame as GameEngine, type UnoCard as EngineCard, type GameDirection } from "@/lib/uno-engine"
+import { UnoGame as GameEngine, type UnoCard as EngineCard, type GameDirection, type UnoColor } from "@/lib/uno-engine"
+import { GameLog } from "@/components/game-log"
 
 interface Player {
   id: number
@@ -74,48 +75,11 @@ export default function UnoGame() {
   const [currentPlayerId, setCurrentPlayerId] = useState<string>("")
   const [feedback, setFeedback] = useState<{ message: string; type: "good" | "bad" | "great" | "perfect" } | null>(null)
   const [isAITurnAnimating, setIsAITurnAnimating] = useState(false)
+  const [isLogVisible, setIsLogVisible] = useState(true)
 
   useEffect(() => {
     const playerNames = ["You", "Alice", "Bob", "Carol", "Dave", "Eve"]
-    const engine = new GameEngine(playerNames, 0, {
-      debugMode: true, // Enable debug logging
-      aiDifficulty: 'hard', // Set AI difficulty
-      stackDrawTwo: false, // Official rules: no stacking
-      stackDrawFour: false, // Official rules: no stacking
-      mustPlayIfDrawable: false, // Official rules: player chooses
-      targetScore: 500,
-    }, {
-      // Event handlers for UI integration
-      onCardPlayed: (player, card, chosenColor) => {
-        console.log(`🎴 ${player.name} played ${card.color} ${card.value}${chosenColor ? ` (chose ${chosenColor})` : ''}`)
-      },
-      onTurnChange: (nextPlayer, direction) => {
-        console.log(`🔄 Turn: ${nextPlayer.name} (${direction})`)
-      },
-      onRoundEnd: (winner, points, scores) => {
-        console.log(`🏆 Round won by ${winner.name} with ${points} points!`)
-        console.log('📊 Scores:', Object.fromEntries(scores))
-      },
-      onGameEnd: (winner, finalScores) => {
-        console.log(`🎉 GAME OVER! ${winner.name} wins the game!`)
-        console.log('🏁 Final scores:', Object.fromEntries(finalScores))
-      },
-      onUnoCalled: (player) => {
-        console.log(`📢 ${player.name} called UNO!`)
-      },
-      onUnoChallenged: (challenger, target, success) => {
-        console.log(`⚖️ ${challenger.name} challenged ${target.name}'s UNO call - ${success ? 'SUCCESS' : 'FAILED'}`)
-      },
-      onWildDrawFourChallenged: (challenger, target, success) => {
-        console.log(`🎯 ${challenger.name} challenged ${target.name}'s Wild Draw Four - ${success ? 'SUCCESS' : 'FAILED'}`)
-      },
-      onCardDrawn: (player, card, autoPlayed) => {
-        console.log(`📥 ${player.name} drew ${card.color} ${card.value}${autoPlayed ? ' (auto-played)' : ''}`)
-      },
-      onActionCardPlayed: (player, card, effect) => {
-        console.log(`⚡ ${player.name} played ${card.color} ${card.value} - ${effect}`)
-      },
-    })
+    const engine = new GameEngine(playerNames, 0) // Human player at index 0
     setGameEngine(engine)
   }, [])
 
@@ -280,7 +244,7 @@ export default function UnoGame() {
       }
 
       const success = gameEngine.playCard("player_0", cardToPlay.id.toString(), chosenColor)
-      console.log("User card play result:", success, "New current player:", gameEngine.getCurrentPlayer().name)
+      console.log("[v0] User card play result:", success, "New current player:", gameEngine.getCurrentPlayer().name)
 
       if (success) {
         const gameData = convertToUIFormat()
@@ -310,7 +274,7 @@ export default function UnoGame() {
     if (topCard) {
       const playableCards = players[0]?.cards.filter(card => card.isPlayable) || []
       if (playableCards.length > 0) {
-        console.log("Cannot draw - player has playable cards:", playableCards.length)
+        console.log("[v0] Cannot draw - player has playable cards:", playableCards.length)
         return
       }
     }
@@ -358,7 +322,7 @@ export default function UnoGame() {
     // Delay game state update until animation completes
     setTimeout(() => {
       const drawnCard = gameEngine.drawCard("player_0")
-      console.log("User draw result, New current player:", gameEngine.getCurrentPlayer().name)
+      console.log("[v0] User draw result, New current player:", gameEngine.getCurrentPlayer().name)
 
       const gameData = convertToUIFormat()
       setPlayers(gameData.players)
@@ -410,7 +374,7 @@ export default function UnoGame() {
     const isHumanTurn = currentPlayer.name === "You" || currentPlayer.id === "player_0"
 
     if (!isHumanTurn && !playDelay) {
-      console.log("AI turn starting for:", currentPlayer.name)
+      console.log("[v0] AI turn starting for:", currentPlayer.name)
       const timer = setTimeout(() => {
         playAITurn()
       }, 3500)
@@ -427,14 +391,11 @@ export default function UnoGame() {
 
     setIsAITurnAnimating(true)
 
-    const aiSounds = ["play", "special"] as const
-    const randomSound = aiSounds[Math.floor(Math.random() * aiSounds.length)]
-    playSound(randomSound)
-
-    // First, determine what card the AI will play (without actually playing it yet)
+    // First, determine what the AI will do
     const topCard = gameEngine.getTopCard()
     let cardToPlay: GameCard | null = null
     let chosenWildColor: string | undefined = undefined
+    let shouldDraw = false
 
     if (topCard) {
       // Convert topCard to GameCard format for comparison
@@ -473,54 +434,127 @@ export default function UnoGame() {
           break
         }
       }
+
+      // If no playable card found, AI should draw
+      if (!cardToPlay) {
+        shouldDraw = true
+      }
     }
 
     const currentPlayerIndex = gameEngine.getPlayers().findIndex((p) => p.id === currentPlayer.id)
     const aiPlayerElement = document.querySelector(`[data-player="${currentPlayerIndex}"]`)
     const centerElement = document.querySelector("[data-center-pile]")
+    const deckElement = document.querySelector("[data-deck]")
 
     if (aiPlayerElement && centerElement) {
-      const aiPlayerRect = aiPlayerElement.getBoundingClientRect()
-      const centerRect = centerElement.getBoundingClientRect()
+      if (shouldDraw && deckElement) {
+        // AI needs to draw a card
+        console.log("AI drawing card")
+        playSound("draw")
 
-      // Create AI card throwing animation with the actual card being played
-      const animatedCard: AnimatedCard = {
-        id: Date.now() + currentPlayerIndex,
-        card: cardToPlay || { id: Math.random(), color: "red", value: 5, isPlayable: false }, // Use real card if available
-        startX: aiPlayerRect.left + aiPlayerRect.width / 2,
-        startY: aiPlayerRect.top + aiPlayerRect.height / 2,
-        endX: centerRect.left + centerRect.width / 2,
-        endY: centerRect.top + centerRect.height / 2,
-        currentX: aiPlayerRect.left + aiPlayerRect.width / 2,
-        currentY: aiPlayerRect.top + aiPlayerRect.height / 2,
-        isAnimating: true,
-        type: 'throw',
-        rotation: Math.random() * 720 - 360, // More dramatic rotation for AI
-        scale: 1.5, // Make it bigger for better visibility
-        zIndex: 10000,
-        trajectory: 'arc', // Use arc for more dramatic AI throws
-        duration: 3000, // Longer duration for better visibility
-        delay: 0,
-        startTime: Date.now(),
-      }
+        const aiPlayerRect = aiPlayerElement.getBoundingClientRect()
+        const deckRect = deckElement.getBoundingClientRect()
 
-      // Small delay to ensure animation is visible
-      setTimeout(() => {
+        // Create drawing animation
+        const animatedCard: AnimatedCard = {
+          id: Date.now() + currentPlayerIndex,
+          card: { id: Math.random(), color: "red", value: "?", isPlayable: false },
+          startX: deckRect.left + deckRect.width / 2,
+          startY: deckRect.top + deckRect.height / 2,
+          endX: aiPlayerRect.left + aiPlayerRect.width / 2,
+          endY: aiPlayerRect.top + aiPlayerRect.height / 2,
+          currentX: deckRect.left + deckRect.width / 2,
+          currentY: deckRect.top + deckRect.height / 2,
+          isAnimating: true,
+          type: 'draw',
+          rotation: 0,
+          scale: 1,
+          zIndex: 9999,
+          trajectory: 'straight',
+          duration: 1500,
+          delay: 0,
+          startTime: Date.now(),
+        }
+
         setAnimatedCards((prev) => [...prev, animatedCard])
-
-        // Play card flip sound at start
         playSound("card-flip")
-      }, 100)
 
-      // Animation will be handled by the useEffect animation frame
-      // Cards will be removed automatically when animation completes
-    }
+        // Execute AI draw after animation
+        setTimeout(() => {
+          // For AI drawing, we need to call drawCard directly since playAITurn would try to make another decision
+          const drawnCard = gameEngine.drawCard(currentPlayer.id)
+          console.log("AI draw result:", drawnCard ? "success" : "failed", "New current player:", gameEngine.getCurrentPlayer().name)
 
-    // Don't execute AI turn yet - wait for animation to complete
-    // The animation will show the card flying, then we'll execute the actual turn
+          const gameData = convertToUIFormat()
+          setPlayers(gameData.players)
+          setCurrentCard(gameData.currentCard)
+          setDirection(gameData.direction)
+          setCurrentPlayerId(gameEngine.getCurrentPlayer().id)
+          setIsAITurnAnimating(false)
+        }, 1600)
+      } else if (cardToPlay) {
+        // AI will play a card
+        console.log("AI playing card:", cardToPlay)
+        const aiSounds = ["play", "special"] as const
+        const randomSound = aiSounds[Math.floor(Math.random() * aiSounds.length)]
+        playSound(randomSound)
 
-    // Delay the actual AI turn execution until animation completes
-    setTimeout(() => {
+        const aiPlayerRect = aiPlayerElement.getBoundingClientRect()
+        const centerRect = centerElement.getBoundingClientRect()
+
+        // Create AI card throwing animation with the actual card being played
+        const animatedCard: AnimatedCard = {
+          id: Date.now() + currentPlayerIndex,
+          card: cardToPlay,
+          startX: aiPlayerRect.left + aiPlayerRect.width / 2,
+          startY: aiPlayerRect.top + aiPlayerRect.height / 2,
+          endX: centerRect.left + centerRect.width / 2,
+          endY: centerRect.top + centerRect.height / 2,
+          currentX: aiPlayerRect.left + aiPlayerRect.width / 2,
+          currentY: aiPlayerRect.top + aiPlayerRect.height / 2,
+          isAnimating: true,
+          type: 'throw',
+          rotation: Math.random() * 720 - 360, // More dramatic rotation for AI
+          scale: 1.5, // Make it bigger for better visibility
+          zIndex: 10000,
+          trajectory: 'arc', // Use arc for more dramatic AI throws
+          duration: 3000, // Longer duration for better visibility
+          delay: 0,
+          startTime: Date.now(),
+        }
+
+        setAnimatedCards((prev) => [...prev, animatedCard])
+        playSound("card-flip")
+
+        // Execute AI play after animation
+        setTimeout(() => {
+          // For AI playing, we need to call playCard directly with the chosen card
+          const success = gameEngine.playCard(currentPlayer.id, cardToPlay.id.toString(), chosenWildColor as UnoColor | undefined)
+          console.log("AI play result:", success, "New current player:", gameEngine.getCurrentPlayer().name)
+
+          const gameData = convertToUIFormat()
+          setPlayers(gameData.players)
+          setCurrentCard(gameData.currentCard)
+          setDirection(gameData.direction)
+          setCurrentPlayerId(gameEngine.getCurrentPlayer().id)
+          setIsAITurnAnimating(false)
+        }, 3100)
+      } else {
+        // Fallback: just execute AI turn without animation
+        console.log("AI turn fallback - no animation")
+        const success = gameEngine.playAITurn()
+        console.log("AI turn result:", success, "New current player:", gameEngine.getCurrentPlayer().name)
+
+        const gameData = convertToUIFormat()
+        setPlayers(gameData.players)
+        setCurrentCard(gameData.currentCard)
+        setDirection(gameData.direction)
+        setCurrentPlayerId(gameEngine.getCurrentPlayer().id)
+        setIsAITurnAnimating(false)
+      }
+    } else {
+      // Fallback: just execute AI turn without animation
+      console.log("AI turn fallback - no DOM elements")
       const success = gameEngine.playAITurn()
       console.log("AI turn result:", success, "New current player:", gameEngine.getCurrentPlayer().name)
 
@@ -530,7 +564,7 @@ export default function UnoGame() {
       setDirection(gameData.direction)
       setCurrentPlayerId(gameEngine.getCurrentPlayer().id)
       setIsAITurnAnimating(false)
-    }, 3100) // Slightly longer than animation duration
+    }
   }
 
   const canPlayCard = (card: GameCard, topCard: GameCard): boolean => {
@@ -1135,7 +1169,7 @@ export default function UnoGame() {
               style={{ transform: `rotate(${(index - 2) * 3}deg)` }}
               onClick={() => {
                 console.log(
-                  "Card clicked:",
+                  "[v0] Card clicked:",
                   card.id,
                   "isPlayable:",
                   card.isPlayable,
@@ -1262,6 +1296,16 @@ export default function UnoGame() {
           </Card>
         </div>
       )}
+
+      {/* Game Log Component */}
+      <GameLog
+        gameEngine={gameEngine}
+        players={players}
+        currentCard={currentCard}
+        direction={direction}
+        isVisible={isLogVisible}
+        onToggleVisibility={() => setIsLogVisible(!isLogVisible)}
+      />
     </div>
   )
 }

@@ -21,12 +21,26 @@ export interface UnoRules {
   stackDrawTwo: boolean
   stackDrawFour: boolean
   mustPlayIfDrawable: boolean
+  allowDrawWhenPlayable: boolean   // NEW: official = true
   targetScore: number
   debugMode: boolean
   aiDifficulty: 'easy' | 'normal' | 'hard' | 'expert'
   enableJumpIn: boolean
   enableSevenZero: boolean
   enableSwapHands: boolean
+}
+
+export const DEFAULT_RULES: UnoRules = {
+  stackDrawTwo: false, // Official rules: no stacking
+  stackDrawFour: false, // Official rules: no stacking
+  mustPlayIfDrawable: false, // Official rules: player chooses
+  allowDrawWhenPlayable: true,     // official behavior
+  targetScore: 500,
+  debugMode: false,
+  aiDifficulty: 'normal',
+  enableJumpIn: false,
+  enableSevenZero: false,
+  enableSwapHands: false,
 }
 
 // Event hooks for UI and multiplayer integration
@@ -41,18 +55,6 @@ export interface UnoGameEvents {
   onCardDrawn?: (player: UnoPlayer, card: UnoCard, autoPlayed: boolean) => void
   onActionCardPlayed?: (player: UnoPlayer, card: UnoCard, effect: string) => void
   onDeckReshuffled?: (remainingCards: number) => void
-}
-
-export const DEFAULT_RULES: UnoRules = {
-  stackDrawTwo: false, // Official rules: no stacking
-  stackDrawFour: false, // Official rules: no stacking
-  mustPlayIfDrawable: false, // Official rules: player chooses
-  targetScore: 500,
-  debugMode: false,
-  aiDifficulty: 'normal',
-  enableJumpIn: false,
-  enableSevenZero: false,
-  enableSwapHands: false,
 }
 
 export class UnoCard {
@@ -96,7 +98,7 @@ export class UnoDeck {
   private cards: UnoCard[] = []
   private discardPile: UnoCard[] = []
 
-  constructor() {
+  constructor(private onReshuffle?: (remaining: number) => void) {
     this.initializeDeck()
     this.shuffle()
   }
@@ -165,8 +167,8 @@ export class UnoDeck {
     this.discardPile = [topCard]
     this.shuffle()
 
-    // Note: We can't emit events from here since UnoDeck doesn't have access to events
-    // The parent UnoGame will need to handle this if needed
+    // Notify parent about reshuffle
+    this.onReshuffle?.(this.cards.length)
   }
 
   playCard(card: UnoCard): void {
@@ -285,6 +287,12 @@ export class UnoPlayer {
     return this.hand.length === 1
   }
 
+  // Set hand directly (for efficient hand swapping/rotation)
+  setHand(cards: UnoCard[]): void {
+    this.hand = [...cards]
+    this.resetUnoCall()
+  }
+
   // AI logic for computer players
   chooseCardToPlay(topCard: UnoCard, wildColor?: UnoColor): UnoCard | null {
     const playableCards = this.getPlayableCards(topCard, wildColor)
@@ -322,7 +330,7 @@ export class UnoPlayer {
 }
 
 export type GameDirection = "clockwise" | "counterclockwise"
-export type GamePhase = "playing" | "waiting" | "drawing" | "choosing_color" | "game_over"
+export type GamePhase = "playing" | "waiting" | "drawing" | "choosing_color" | "choosing_player" | "game_over"
 
 export class UnoGame {
   private players: UnoPlayer[] = []
@@ -340,13 +348,16 @@ export class UnoGame {
   private unoChallengeWindow = 2000 // 2 seconds to challenge UNO call
   private lastActionCard: UnoCard | null = null // Track the last action card for stacking
   private rules: UnoRules
-  private unoChallengeTimers: Map<string, NodeJS.Timeout> = new Map() // Track UNO challenge timers
+  private unoChallengeTimers: Map<string, ReturnType<typeof setTimeout>> = new Map() // Track UNO challenge timers
   private events: UnoGameEvents
+  private eventLog: Array<{ timestamp: number; event: string; data: any }> = [] // Event log for replay/debug
 
   constructor(playerNames: string[], humanPlayerIndex = 0, rules: Partial<UnoRules> = {}, events: UnoGameEvents = {}) {
     this.rules = { ...DEFAULT_RULES, ...rules }
     this.events = events
-    this.deck = new UnoDeck()
+    this.deck = new UnoDeck((remaining) => {
+      this.emitEvent('onDeckReshuffled', remaining)
+    })
     this.initializePlayers(playerNames, humanPlayerIndex)
     this.dealInitialCards()
     this.startGame()
@@ -358,6 +369,22 @@ export class UnoGame {
     }
   }
 
+  private logEvent(event: string, data: any = {}): void {
+    const logEntry = {
+      timestamp: Date.now(),
+      event,
+      data,
+    }
+    this.eventLog.push(logEntry)
+
+    // Cap event log to prevent unbounded growth
+    if (this.eventLog.length > 1000) {
+      this.eventLog = this.eventLog.slice(-1000)
+    }
+
+    this.log(`EVENT: ${event}`, data)
+  }
+
   private emitEvent<K extends keyof UnoGameEvents>(eventName: K, ...args: Parameters<NonNullable<UnoGameEvents[K]>>): void {
     const handler = this.events[eventName]
     if (handler) {
@@ -367,6 +394,9 @@ export class UnoGame {
         this.log(`Error in event handler ${eventName}:`, error)
       }
     }
+
+    // Log the event
+    this.logEvent(eventName as string, args)
   }
 
   private initializePlayers(playerNames: string[], humanPlayerIndex: number): void {
@@ -459,12 +489,33 @@ export class UnoGame {
     }
   }
 
+  // Choose color for Wild card (used when phase is "choosing_color")
+  chooseColor(color: UnoColor): boolean {
+    if (this.phase !== "choosing_color") return false
+
+    this.wildColor = color
+    this.phase = "playing"
+
+    const topCard = this.getTopCard()
+    if (topCard) {
+      this.emitEvent('onActionCardPlayed', this.getCurrentPlayer(), topCard, `Color chosen: ${color}`)
+    }
+
+    this.log("Color chosen:", color)
+    return true
+  }
+
   playCard(playerId: string, cardId: string, chosenWildColor?: UnoColor): boolean {
     const player = this.players.find((p) => p.id === playerId)
     const topCard = this.deck.getTopCard()
 
-    if (!player || !topCard || this.phase !== "playing") return false
+    if (!player || !topCard) return false
     if (this.getCurrentPlayer().id !== playerId) return false
+
+    if (this.phase !== "playing") {
+      this.log("Cannot play card - invalid phase:", this.phase)
+      return false
+    }
 
     const card = player.getHand().find((c) => c.id === cardId)
     if (!card || !card.canPlayOn(topCard, this.wildColor || undefined)) return false
@@ -528,8 +579,10 @@ export class UnoGame {
     // Handle special card effects
     this.handleCardEffect(playedCard, chosenWildColor)
 
-    // Move to next player
-    this.nextTurn()
+    // Move to next player (unless we're choosing a player for swap)
+    if (this.phase === "playing") {
+      this.nextTurn()
+    }
 
     return true
   }
@@ -570,7 +623,7 @@ export class UnoGame {
         break
 
       case "Wild":
-        this.wildColor = chosenWildColor || "red"
+        this.wildColor = chosenWildColor || this.getCurrentPlayer().chooseWildColor()
         this.lastActionCard = null // Reset action card tracking
         effect = "Wild - color changed to " + this.wildColor
         break
@@ -584,9 +637,26 @@ export class UnoGame {
           this.drawPenalty = 4
           effect = "Wild Draw Four"
         }
-        this.wildColor = chosenWildColor || "red"
+        this.wildColor = chosenWildColor || this.getCurrentPlayer().chooseWildColor()
         this.skipNext = true
         this.lastActionCard = card
+        break
+
+      // House Rules
+      case 7:
+        if (this.rules.enableSevenZero) {
+          // Seven rule: current player chooses another player to swap hands with
+          this.phase = "choosing_player" // Set phase to indicate player selection needed
+          effect = "Seven - choose player to swap hands"
+        }
+        break
+
+      case 0:
+        if (this.rules.enableSevenZero) {
+          // Zero rule: rotate hands in play direction
+          this.rotateHands()
+          effect = "Zero - rotate hands in play direction"
+        }
         break
     }
 
@@ -594,6 +664,64 @@ export class UnoGame {
     if (effect) {
       this.emitEvent('onActionCardPlayed', this.getCurrentPlayer(), card, effect)
     }
+  }
+
+  // House rule: rotate hands in play direction
+  private rotateHands(): void {
+    const hands = this.players.map(player => [...player.getHand()])
+
+    // Rotate hands based on direction
+    if (this.direction === "clockwise") {
+      // Pass hands clockwise
+      for (let i = 0; i < this.players.length; i++) {
+        const nextIndex = (i + 1) % this.players.length
+        this.players[nextIndex].setHand(hands[i])
+      }
+    } else {
+      // Pass hands counterclockwise
+      for (let i = 0; i < this.players.length; i++) {
+        const prevIndex = i === 0 ? this.players.length - 1 : i - 1
+        this.players[prevIndex].setHand(hands[i])
+      }
+    }
+
+    this.log("Hands rotated in", this.direction, "direction")
+
+    const topCard = this.getTopCard()
+    if (topCard) {
+      this.emitEvent('onActionCardPlayed', this.getCurrentPlayer(), topCard, "Zero - rotate hands")
+    }
+  }
+
+  // House rule: swap hands between two players
+  swapHands(player1Id: string, player2Id: string): boolean {
+    if (!this.rules.enableSevenZero || this.phase !== "choosing_player") return false
+    if (player1Id === player2Id) return false
+
+    const player1 = this.players.find((p) => p.id === player1Id)
+    const player2 = this.players.find((p) => p.id === player2Id)
+
+    if (!player1 || !player2) return false
+
+    // Store hands
+    const hand1 = [...player1.getHand()]
+    const hand2 = [...player2.getHand()]
+
+    // Swap hands
+    player1.setHand(hand2)
+    player2.setHand(hand1)
+
+    // Reset phase
+    this.phase = "playing"
+
+    this.log("Hands swapped between", player1.name, "and", player2.name)
+
+    const topCard = this.getTopCard()
+    if (topCard) {
+      this.emitEvent('onActionCardPlayed', this.getCurrentPlayer(), topCard, `Seven - swapped ${player1.name} & ${player2.name}`)
+    }
+
+    return true
   }
 
   drawCard(playerId: string): UnoCard | null {
@@ -606,9 +734,9 @@ export class UnoGame {
     // Check if player has playable cards
     const playableCards = player.getPlayableCards(topCard, this.wildColor || undefined)
 
-    // Only allow drawing if no playable cards exist
-    if (playableCards.length > 0) {
-      this.log("Cannot draw - player has playable cards:", playableCards.length)
+    // Only forbid drawing if that house rule is enabled
+    if (!this.rules.allowDrawWhenPlayable && playableCards.length > 0) {
+      this.log("Cannot draw - player has playable cards and allowDrawWhenPlayable=false")
       return null // Cannot draw when playable cards exist
     }
 
@@ -721,116 +849,65 @@ export class UnoGame {
   challengeWildDrawFour(challengerId: string, targetPlayerId: string): boolean {
     const challenger = this.players.find((p) => p.id === challengerId)
     const targetPlayer = this.players.find((p) => p.id === targetPlayerId)
+    const topCard = this.getTopCard()
 
-    if (!challenger || !targetPlayer || !this.previousActiveColor) return false
+    if (!challenger || !targetPlayer) return false
+    if (!topCard || topCard.value !== "Wild Draw Four") return false
+    if (!this.previousActiveColor) return false
 
-    // Check if target player has a matching color card against the PREVIOUS active color
-    const hasMatchingColor = targetPlayer.getHand().some((c) => c.color === this.previousActiveColor)
+    // Check if target still has any card matching the *previous* active color
+    const hasMatchingColor = targetPlayer.getHand().some(
+      (c) => c.color === this.previousActiveColor
+    )
 
     if (hasMatchingColor) {
-      // Target player had a matching color - they get penalty (draw 4 cards)
-      this.log("Wild Draw Four challenge successful - target player had matching color")
-      const penaltyCards = this.deck.drawCards(4)
-      targetPlayer.addCards(penaltyCards)
-
-      // Emit Wild Draw Four challenge event (successful)
-      this.emitEvent('onWildDrawFourChallenged', challenger, targetPlayer, true)
-
+      // Challenge succeeds: target player penalized
+      const penalty = this.deck.drawCards(4)
+      targetPlayer.addCards(penalty)
+      this.emitEvent("onWildDrawFourChallenged", challenger, targetPlayer, true)
+      this.log("Wild Draw Four challenge SUCCESS -", targetPlayer.name, "penalized")
       return true
     } else {
-      // Challenger was wrong - they get penalty (draw 6 cards: 4 + 2)
-      this.log("Wild Draw Four challenge failed - challenger was wrong")
-      const penaltyCards = this.deck.drawCards(6)
-      challenger.addCards(penaltyCards)
-
-      // Emit Wild Draw Four challenge event (failed)
-      this.emitEvent('onWildDrawFourChallenged', challenger, targetPlayer, false)
-
+      // Challenge fails: challenger penalized
+      const penalty = this.deck.drawCards(6)
+      challenger.addCards(penalty)
+      this.emitEvent("onWildDrawFourChallenged", challenger, targetPlayer, false)
+      this.log("Wild Draw Four challenge FAILED -", challenger.name, "penalized")
       return false
     }
   }
 
   // Check if Wild Draw Four can be challenged
   canChallengeWildDrawFour(targetPlayerId: string): boolean {
-    const targetPlayer = this.players.find((p) => p.id === targetPlayerId)
+    const targetPlayer = this.players.find(p => p.id === targetPlayerId)
     const topCard = this.getTopCard()
-
-    if (!targetPlayer || !topCard) return false
-
-    // Can only challenge if the last played card was Wild Draw Four
-    return topCard.value === "Wild Draw Four"
+    return !!(targetPlayer && topCard?.value === "Wild Draw Four" && this.previousActiveColor)
   }
 
   private nextTurn(): void {
-    this.log(
-      "nextTurn() called - current player:",
-      this.players[this.currentPlayerIndex].name,
-      "index:",
-      this.currentPlayerIndex,
-    )
+    if (this.phase === "game_over") return
 
-    let nextPlayerIndex = this.getNextPlayerIndex()
-    this.log("Initial next player index:", nextPlayerIndex, "player:", this.players[nextPlayerIndex].name)
+    let step = this.direction === "clockwise" ? 1 : -1
 
-    // Handle draw penalty first
+    if (this.skipNext) {
+      this.currentPlayerIndex = (this.currentPlayerIndex + step + this.players.length) % this.players.length
+      this.skipNext = false
+    }
+
+    this.currentPlayerIndex = (this.currentPlayerIndex + step + this.players.length) % this.players.length
+
+    const current = this.getCurrentPlayer()
+
+    // Apply pending draw penalty
     if (this.drawPenalty > 0) {
-      this.log("Draw penalty active:", this.drawPenalty)
-      const nextPlayer = this.players[nextPlayerIndex]
-      const penaltyCards = this.deck.drawCards(this.drawPenalty)
-      nextPlayer.addCards(penaltyCards)
+      const drawn = this.deck.drawCards(this.drawPenalty)
+      current.addCards(drawn)
+      this.log(`${current.name} drew ${this.drawPenalty} as penalty`)
       this.drawPenalty = 0
     }
 
-    // Handle skip - if we need to skip, advance one more time
-    if (this.skipNext) {
-      this.log("Skip next is active")
-      this.skipNext = false
-      nextPlayerIndex = this.getNextPlayerIndex(nextPlayerIndex)
-      this.log("After skip, next player index:", nextPlayerIndex, "player:", this.players[nextPlayerIndex].name)
-    }
-
-    // Always update to the calculated next player
-    this.log("Setting currentPlayerIndex from", this.currentPlayerIndex, "to", nextPlayerIndex)
-    this.currentPlayerIndex = nextPlayerIndex
-    this.log("New current player:", this.players[this.currentPlayerIndex].name)
-
-    // Emit turn change event
-    this.emitEvent('onTurnChange', this.getCurrentPlayer(), this.direction)
-
-    // Reset UNO calls for all players except those with one card
-    this.players.forEach((player) => {
-      if (!player.hasOneCard()) {
-        player.resetUnoCall()
-      }
-    })
-
-    // Reset action card tracking if no draw penalty is active
-    if (this.drawPenalty === 0) {
-      this.lastActionCard = null
-    }
-  }
-
-  private getNextPlayerIndex(fromIndex?: number): number {
-    const currentIndex = fromIndex ?? this.currentPlayerIndex
-    const playerCount = this.players.length
-    this.log(
-      "getNextPlayerIndex - from:",
-      currentIndex,
-      "direction:",
-      this.direction,
-      "playerCount:",
-      playerCount,
-    )
-
-    let nextIndex: number
-    if (this.direction === "clockwise") {
-      nextIndex = (currentIndex + 1) % playerCount
-    } else {
-      nextIndex = currentIndex === 0 ? playerCount - 1 : currentIndex - 1
-    }
-
-    this.log("Calculated next index:", nextIndex)
-    return nextIndex
+    this.phase = "playing"
+    this.emitEvent("onTurnChange", current, this.direction)
   }
 
   private endRound(winner: UnoPlayer): void {
@@ -864,6 +941,12 @@ export class UnoGame {
 
       // Emit game end event
       this.emitEvent('onGameEnd', winner, scores)
+    } else {
+      // Start new round if target score not reached
+      this.log("Target score not reached, starting new round")
+      setTimeout(() => {
+        this.startNewRound()
+      }, 1000) // Small delay for UI to show round results
     }
   }
 
@@ -918,6 +1001,89 @@ export class UnoGame {
 
   getRules(): UnoRules {
     return { ...this.rules }
+  }
+
+  // Get complete game state snapshot for UI/multiplayer sync
+  getState(): any {
+    return {
+      players: this.players.map((player, index) => ({
+        id: player.id,
+        name: player.name,
+        isHuman: player.isHuman,
+        handSize: player.getHandSize(),
+        score: player.getScore(),
+        hasCalledUno: player.getHasCalledUno(),
+        hasOneCard: player.hasOneCard(),
+        turnOrder: index, // Add turn order for easier UI
+      })),
+      currentPlayer: {
+        id: this.getCurrentPlayer().id,
+        name: this.getCurrentPlayer().name,
+        turnOrder: this.currentPlayerIndex,
+      },
+      gameState: {
+        phase: this.phase,
+        direction: this.direction,
+        wildColor: this.wildColor,
+        drawPenalty: this.drawPenalty,
+        skipNext: this.skipNext,
+        deckCount: this.getDeckCount(),
+        topCard: this.getTopCard() ? {
+          color: this.getTopCard()!.color,
+          value: this.getTopCard()!.value,
+        } : null,
+        lastActionCard: this.lastActionCard ? {
+          color: this.lastActionCard.color,
+          value: this.lastActionCard.value,
+        } : null,
+      },
+      roundInfo: {
+        roundWinner: this.roundWinner ? {
+          id: this.roundWinner.id,
+          name: this.roundWinner.name,
+        } : null,
+        gameWinner: this.winner ? {
+          id: this.winner.id,
+          name: this.winner.name,
+        } : null,
+        isGameOver: this.isGameOver(),
+      },
+      rules: this.getRules(),
+    }
+  }
+
+  // Simplified state export for AI/clients
+  getSimpleState() {
+    return {
+      players: this.players.map((p) => ({
+        id: p.id,
+        name: p.name,
+        handSize: p.getHandSize(),
+        score: p.getScore(),
+        isHuman: p.isHuman,
+      })),
+      currentPlayerId: this.getCurrentPlayer().id,
+      direction: this.direction,
+      topCard: this.getTopCard(),
+      wildColor: this.wildColor,
+      phase: this.phase,
+    }
+  }
+
+  // Get player's hand for UI sync
+  getPlayerHand(playerId: string): UnoCard[] | null {
+    const player = this.players.find(p => p.id === playerId)
+    return player ? player.getHand() : null
+  }
+
+  // Get event log for replay/debugging
+  getEventLog(): Array<{ timestamp: number; event: string; data: any }> {
+    return [...this.eventLog]
+  }
+
+  // Clear event log (useful for new games)
+  clearEventLog(): void {
+    this.eventLog = []
   }
 
   isGameOver(): boolean {
@@ -989,36 +1155,72 @@ export class UnoGame {
       return false
     }
 
+    // Add realistic AI delay based on difficulty
+    const delay = this.getAIDelay()
+    this.log("AI thinking for", delay, "ms...")
+
+    setTimeout(() => {
+      this.executeAITurn(currentPlayer)
+    }, delay)
+
+    return true // Return true to indicate AI turn is in progress
+  }
+
+  // Pure AI decision function (for testing/simulation)
+  decideAITurn(): { action: 'play' | 'draw'; cardId?: string; chosenColor?: UnoColor } | null {
+    const currentPlayer = this.getCurrentPlayer()
     const topCard = this.getTopCard()
-    if (!topCard) {
-      this.log("playAITurn - no top card")
-      return false
-    }
 
-    this.log("playAITurn - attempting to choose card for:", currentPlayer.name)
+    if (!topCard) return null
 
-    // Use difficulty-based AI strategy
+    // Try to play a card
     const cardToPlay = this.chooseAICard(currentPlayer, topCard)
-
     if (cardToPlay) {
-      this.log("playAITurn - chosen card:", cardToPlay.id, cardToPlay.color, cardToPlay.value)
       let chosenColor: UnoColor | undefined
       if (cardToPlay.isWildCard()) {
         chosenColor = currentPlayer.chooseWildColor()
-        this.log("playAITurn - chosen wild color:", chosenColor)
       }
-
-      const result = this.playCard(currentPlayer.id, cardToPlay.id, chosenColor)
-      this.log("playAITurn - playCard result:", result)
-      return result
-    } else {
-      this.log("playAITurn - no playable card, drawing")
-      const drawnCard = this.drawCard(currentPlayer.id)
-      this.log("playAITurn - drawCard result:", drawnCard?.id || "null")
-
-      // The AI will get another chance on their next turn if the card is still playable
-      return drawnCard !== null
+      return { action: 'play', cardId: cardToPlay.id, chosenColor }
     }
+
+    // Must draw
+    return { action: 'draw' }
+  }
+
+  // Apply AI decision (pure function)
+  applyAIAction(action: { action: 'play' | 'draw'; cardId?: string; chosenColor?: UnoColor }): boolean {
+    if (action.action === 'play' && action.cardId) {
+      return this.playCard(this.getCurrentPlayer().id, action.cardId, action.chosenColor)
+    } else if (action.action === 'draw') {
+      return this.drawCard(this.getCurrentPlayer().id) !== null
+    }
+    return false
+  }
+
+  private getAIDelay(): number {
+    // Base delay with some randomness for realism
+    const baseDelays = {
+      easy: 1000,
+      normal: 1500,
+      hard: 2000,
+      expert: 2500,
+    }
+
+    const baseDelay = baseDelays[this.rules.aiDifficulty] || 1500
+    const randomFactor = 0.5 + Math.random() * 1.0 // 0.5x to 1.5x base delay
+
+    return Math.floor(baseDelay * randomFactor)
+  }
+
+  private executeAITurn(currentPlayer: UnoPlayer): void {
+    const decision = this.decideAITurn()
+    if (!decision) {
+      this.log("AI could not decide on action")
+      return
+    }
+
+    const success = this.applyAIAction(decision)
+    this.log("AI action result:", success, "action:", decision.action)
   }
 
   // Enhanced AI card selection based on difficulty
@@ -1122,5 +1324,28 @@ export class UnoGame {
   private getNextPlayer(): UnoPlayer {
     const nextIndex = this.getNextPlayerIndex()
     return this.players[nextIndex]
+  }
+
+  private getNextPlayerIndex(fromIndex?: number): number {
+    const currentIndex = fromIndex ?? this.currentPlayerIndex
+    const playerCount = this.players.length
+    this.log(
+      "getNextPlayerIndex - from:",
+      currentIndex,
+      "direction:",
+      this.direction,
+      "playerCount:",
+      playerCount,
+    )
+
+    let nextIndex: number
+    if (this.direction === "clockwise") {
+      nextIndex = (currentIndex + 1) % playerCount
+    } else {
+      nextIndex = currentIndex === 0 ? playerCount - 1 : currentIndex - 1
+    }
+
+    this.log("Calculated next index:", nextIndex)
+    return nextIndex
   }
 }
