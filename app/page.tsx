@@ -229,37 +229,39 @@ export default function UnoGame() {
   })
 
   const getPlayerPosition = (index: number) => {
-    // Simple fixed positioning system
+    // Current player (bottom center) - unchanged
     if (index === 0) {
-      // Current player (bottom center) - unchanged
       return { top: "92%", left: "50%" }
     }
 
-    // Improved positions for opponents - closer to central deck while maintaining circular layout
-    const opponentPositions = [
-      { top: "25%", left: "20%" },   // Alice (far left)
-      { top: "22%", left: "30%" },   // Bob (left)
-      { top: "20%", left: "40%" },   // Carol (center-left)
-      { top: "20%", left: "60%" },   // Dave (center-right)
-      { top: "22%", left: "70%" },   // Eve (right)
-    ]
+    // Perfect symmetrical arc using polar coordinates
+    const centerX = 50; // Center of screen horizontally
+    const centerY = 35; // Center of deck area
+    const radius = 15;  // Distance from center (adjust to bring closer/farther)
+
+    // Angles for each opponent (in degrees)
+    const angles = [180, 225, 270, 315, 0]; // Perfect arc distribution
 
     const opponentIndex = index - 1
-    if (opponentIndex < opponentPositions.length) {
-      const pos = opponentPositions[opponentIndex]
+    if (opponentIndex < angles.length) {
+      const angle = angles[opponentIndex];
+      const radian = (angle * Math.PI) / 180;
+
       return {
-        top: pos.top,
-        left: pos.left,
-        position: 'absolute' as const
+        top: `${centerY + radius * Math.sin(radian)}%`,
+        left: `${centerX + radius * Math.cos(radian)}%`,
+        position: 'absolute' as const,
+        transform: 'translate(-50%, -50%)' // Perfect centering
       }
     }
 
     // Fallback for additional players
-    const fallbackIndex = opponentIndex - opponentPositions.length
+    const fallbackIndex = opponentIndex - angles.length
     return {
-      top: `${15 + (fallbackIndex * 5)}%`,
-      left: `${10 + (fallbackIndex * 15)}%`,
-      position: 'absolute' as const
+      top: `${centerY + (fallbackIndex * 5)}%`,
+      left: `${centerX + (fallbackIndex * 10)}%`,
+      position: 'absolute' as const,
+      transform: 'translate(-50%, -50%)'
     }
   }
 
@@ -1411,38 +1413,40 @@ export default function UnoGame() {
 
 
 
-              {/* Opponent Cards Display */}
-              <div className="flex gap-[-15px] transform-origin-center mb-2">
-                {Array.from({ length: Math.min(player.cardCount, 5) }, (_, i) => (
-                  <div
-                    key={i}
-                    className="transition-transform duration-300 hover:scale-110"
-                    style={{
-                      transform: `rotate(${(i - 2) * 3}deg)`,
-                      zIndex: 5 - i
-                    }}
-                  >
-                    <UnoCard
-                      color="red"
-                      value="1"
-                      size="small"
-                      className="shadow-lg"
-                    />
-                  </div>
-                ))}
-                {player.cardCount > 5 && (
-                  <div className="w-[35px] h-[50px] bg-gradient-to-br from-gray-600 to-gray-700 border-2 border-gray-400 rounded-md shadow-lg flex items-center justify-center">
-                    <span className="text-white text-xs font-bold">+{player.cardCount - 5}</span>
-                  </div>
-                )}
-              </div>
+              {/* Opponent Cards Display - Only for Active Player */}
+              {player.isActive && (
+                <div className="flex gap-[-15px] transform-origin-center mb-2">
+                  {Array.from({ length: Math.min(player.cardCount, 5) }, (_, i) => (
+                    <div
+                      key={i}
+                      className="transition-transform duration-300 hover:scale-110"
+                      style={{
+                        transform: `rotate(${(i - 2) * 3}deg)`,
+                        zIndex: 5 - i
+                      }}
+                    >
+                      <UnoCard
+                        color="red"
+                        value="1"
+                        size="small"
+                        className="shadow-lg"
+                      />
+                    </div>
+                  ))}
+                  {player.cardCount > 5 && (
+                    <div className="w-[35px] h-[50px] bg-gradient-to-br from-gray-600 to-gray-700 border-2 border-gray-400 rounded-md shadow-lg flex items-center justify-center">
+                      <span className="text-white text-xs font-bold">+{player.cardCount - 5}</span>
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div
                 className={`relative transition-all duration-300 ${player.isActive ? "ring-4 ring-yellow-400 rounded-full shadow-2xl shadow-yellow-400/70 scale-110" : ""
                   }`}
               >
                 <Avatar
-                  className={`border-2 border-white/30 shadow-lg transition-all duration-300 ${player.isActive ? "w-14 h-14" : "w-12 h-12"
+                  className={`border-2 border-white/30 shadow-lg transition-all duration-300 ${player.isActive ? "w-20 h-20" : "w-16 h-16"
                     }`}
                 >
                   <AvatarImage src={player.avatar || "/placeholder.svg"} alt={player.name} />
@@ -1462,7 +1466,7 @@ export default function UnoGame() {
 
               <div className="text-center">
                 <p
-                  className={`font-semibold text-white drop-shadow-lg transition-all duration-300 ${player.isActive ? "text-sm" : "text-xs"
+                  className={`font-semibold text-white drop-shadow-lg transition-all duration-300 ${player.isActive ? "text-base" : "text-sm"
                     }`}
                 >
                   {player.name}
