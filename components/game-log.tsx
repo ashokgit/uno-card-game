@@ -17,7 +17,8 @@ import {
     Trash2,
     Info,
     Copy,
-    Check
+    Check,
+    Bug
 } from "lucide-react"
 import { UnoGame } from "@/lib/uno-engine"
 
@@ -60,6 +61,7 @@ export function GameLog({
     })
     const scrollAreaRef = useRef<HTMLDivElement>(null)
     const [copied, setCopied] = useState(false)
+    const [debugMode, setDebugMode] = useState(false)
 
     // Auto-scroll to bottom when new logs are added
     useEffect(() => {
@@ -97,12 +99,41 @@ export function GameLog({
                         actionCardsPlayed: event.data[1]?.isActionCard?.() ? prev.actionCardsPlayed + 1 : prev.actionCardsPlayed,
                         wildCardsPlayed: event.data[1]?.isWildCard?.() ? prev.wildCardsPlayed + 1 : prev.wildCardsPlayed,
                     }))
+
+                    // Enhanced logging for card plays
+                    const card = event.data[1]
+                    const player = event.data[0]
+                    let cardDescription = card?.value || 'card'
+
+                    if (card?.isWildCard()) {
+                        const chosenColor = event.data[2] || 'unknown'
+                        cardDescription = `Wild (→ ${chosenColor})`
+                    } else if (card?.isActionCard()) {
+                        cardDescription = `${card.value} (${card.color})`
+                    } else {
+                        cardDescription = `${card.value} (${card.color})`
+                    }
+
                     addLog({
                         type: 'action',
-                        message: `${event.data[0]?.name || 'Unknown'} played ${event.data[1]?.value || 'card'}`,
-                        player: event.data[0]?.name,
-                        data: event.data[1]
+                        message: `${player?.name || 'Unknown'} played ${cardDescription}`,
+                        player: player?.name,
+                        data: card
                     })
+
+                    // Debug logging for AI decisions
+                    if (debugMode && player && !player.isHuman && gameEngine) {
+                        const playerObj = gameEngine.getPlayers().find(p => p.id === player.id)
+                        if (playerObj) {
+                            const handSize = playerObj.getHandSize()
+                            const playableCards = playerObj.getPlayableCards(card, gameEngine.getWildColor() || undefined)
+                            addLog({
+                                type: 'stat',
+                                message: `🐛 ${player.name} had ${handSize} cards, ${playableCards.length} playable`,
+                                player: player.name
+                            })
+                        }
+                    }
                     break
 
                 case 'onCardDrawn':
@@ -122,11 +153,24 @@ export function GameLog({
                         ...prev,
                         totalTurns: prev.totalTurns + 1,
                     }))
+
+                    const turnPlayer = event.data[0]
+                    const direction = event.data[1]
+                    let turnMessage = `Turn: ${turnPlayer?.name || 'Unknown'} (${direction})`
+
+                    // Add UNO warning if player has one card
+                    if (turnPlayer && gameEngine) {
+                        const playerObj = gameEngine.getPlayers().find(p => p.id === turnPlayer.id)
+                        if (playerObj && playerObj.hasOneCard()) {
+                            turnMessage += ' [1 CARD - CALL UNO!]'
+                        }
+                    }
+
                     addLog({
                         type: 'turn',
-                        message: `Turn: ${event.data[0]?.name || 'Unknown'} (${event.data[1]})`,
-                        player: event.data[0]?.name,
-                        data: { direction: event.data[1] }
+                        message: turnMessage,
+                        player: turnPlayer?.name,
+                        data: { direction }
                     })
                     break
 
@@ -155,10 +199,12 @@ export function GameLog({
                     break
 
                 case 'onActionCardPlayed':
+                    const effect = event.data[2] || 'Action card effect'
+                    const actionPlayer = event.data[0]?.name || 'Unknown'
                     addLog({
                         type: 'event',
-                        message: `⚡ ${event.data[2] || 'Action card effect'}`,
-                        player: event.data[0]?.name
+                        message: `⚡ ${actionPlayer}: ${effect}`,
+                        player: actionPlayer
                     })
                     break
 
@@ -273,6 +319,15 @@ Game Statistics:
                             <span className="text-white text-sm font-semibold">Game Log</span>
                         </div>
                         <div className="flex items-center gap-1">
+                            <Button
+                                size="sm"
+                                variant="ghost"
+                                className={`h-6 w-6 p-0 hover:text-white hover:bg-white/10 ${debugMode ? 'text-green-400' : 'text-white/70'}`}
+                                onClick={() => setDebugMode(!debugMode)}
+                                title="Toggle debug mode"
+                            >
+                                <Bug className="w-3 h-3" />
+                            </Button>
                             <Button
                                 size="sm"
                                 variant="ghost"

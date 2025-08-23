@@ -298,15 +298,34 @@ export class UnoPlayer {
     const playableCards = this.getPlayableCards(topCard, wildColor)
     if (playableCards.length === 0) return null
 
-    // AI strategy: prefer action cards, then matching color, then matching number
+    // Enhanced AI strategy with better prioritization
+    const normalCards = playableCards.filter((card) => !card.isActionCard() && !card.isWildCard())
     const actionCards = playableCards.filter((card) => card.isActionCard() && !card.isWildCard())
+    const wildCards = playableCards.filter((card) => card.isWildCard())
+
+    // 1. Prefer normal cards (numbers) over action cards and wilds
+    if (normalCards.length > 0) {
+      // Prefer color matches over number matches
+      const colorMatches = normalCards.filter((card) => card.color === (wildColor || topCard.color))
+      if (colorMatches.length > 0) {
+        return colorMatches[Math.floor(Math.random() * colorMatches.length)]
+      }
+      return normalCards[Math.floor(Math.random() * normalCards.length)]
+    }
+
+    // 2. Prefer action cards over wilds (but be strategic about it)
     if (actionCards.length > 0) {
+      // Prefer color matches for action cards
+      const colorMatches = actionCards.filter((card) => card.color === (wildColor || topCard.color))
+      if (colorMatches.length > 0) {
+        return colorMatches[Math.floor(Math.random() * colorMatches.length)]
+      }
       return actionCards[Math.floor(Math.random() * actionCards.length)]
     }
 
-    const colorMatches = playableCards.filter((card) => card.color === topCard.color)
-    if (colorMatches.length > 0) {
-      return colorMatches[Math.floor(Math.random() * colorMatches.length)]
+    // 3. Wild cards as last resort - choose best color strategically
+    if (wildCards.length > 0) {
+      return wildCards[Math.floor(Math.random() * wildCards.length)]
     }
 
     return playableCards[Math.floor(Math.random() * playableCards.length)]
@@ -321,9 +340,16 @@ export class UnoPlayer {
       }
     })
 
+    // Find the color with the most cards
     const maxColor = Object.entries(colorCounts).reduce((a, b) =>
       colorCounts[a[0] as keyof typeof colorCounts] > colorCounts[b[0] as keyof typeof colorCounts] ? a : b,
-    )[0] as UnoColor
+    )[0] as keyof typeof colorCounts
+
+    // If no color preference, choose randomly
+    if (colorCounts[maxColor] === 0) {
+      const colors: UnoColor[] = ["red", "blue", "green", "yellow"]
+      return colors[Math.floor(Math.random() * colors.length)]
+    }
 
     return maxColor
   }
