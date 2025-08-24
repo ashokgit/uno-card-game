@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;500;600;700&family=Fascinate&display=swap');
 @import "tailwindcss";
 @import "tw-animate-css";
 
@@ -563,8 +563,9 @@
 
 /* Uno Arena Imprinted Text Styles */
 .uno-arena-text {
-  font-family: 'Orbitron', monospace;
-  font-weight: 900;
+  font-family: "Fascinate", system-ui !important;
+  font-weight: 400 !important;
+  font-style: normal !important;
   font-size: 4rem;
   text-transform: uppercase;
   letter-spacing: 0.2em;
@@ -581,6 +582,13 @@
   pointer-events: none;
   white-space: nowrap;
   filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.2));
+}
+
+/* Fascinate font utility class */
+.fascinate-regular {
+  font-family: "Fascinate", system-ui;
+  font-weight: 400;
+  font-style: normal;
 }
 
 .uno-arena-text::before {

@@ -1321,7 +1321,7 @@ export default function UnoGame() {
       {/* Center Game Area */}
       <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-40">
         {/* Uno Arena Imprinted Text */}
-        <div className="uno-arena-text font-gaming">
+        <div className="uno-arena-text fascinate-regular">
           UNO ARENA
         </div>
 
