@@ -367,28 +367,47 @@ export class UnoPlayer {
     this.resetUnoCall()
   }
 
-  // Simple helper methods for AI (moved to UnoGame for strategic decisions)
+  // Enhanced AI color choice strategy
   chooseWildColor(): UnoColor {
-    // AI chooses color based on most cards in hand
     const colorCounts = { red: 0, blue: 0, green: 0, yellow: 0 }
+
+    // Count cards for each color
     this.hand.forEach((card) => {
       if (card.color !== "wild") {
         colorCounts[card.color as keyof typeof colorCounts]++
       }
     })
 
-    // Find the color with the most cards
+    // Strategy 1: Prefer colors with high-point action cards (Draw Two, Skip, Reverse)
+    const actionCardColors = { red: 0, blue: 0, green: 0, yellow: 0 }
+    this.hand.forEach((card) => {
+      if (card.color !== "wild" && card.isActionCard()) {
+        actionCardColors[card.color as keyof typeof actionCardColors]++
+      }
+    })
+
+    // Find colors with action cards
+    const colorsWithActionCards = Object.entries(actionCardColors)
+      .filter(([_, count]) => count > 0)
+      .sort((a, b) => actionCardColors[b[0] as keyof typeof actionCardColors] - actionCardColors[a[0] as keyof typeof actionCardColors])
+
+    if (colorsWithActionCards.length > 0) {
+      // Prefer colors with the most action cards
+      return colorsWithActionCards[0][0] as UnoColor
+    }
+
+    // Strategy 2: Prefer colors with the most cards (original strategy)
     const maxColor = Object.entries(colorCounts).reduce((a, b) =>
       colorCounts[a[0] as keyof typeof colorCounts] > colorCounts[b[0] as keyof typeof colorCounts] ? a : b,
     )[0] as keyof typeof colorCounts
 
-    // If no color preference, choose randomly
-    if (colorCounts[maxColor] === 0) {
-      const colors: UnoColor[] = ["red", "blue", "green", "yellow"]
-      return colors[Math.floor(Math.random() * colors.length)]
+    if (colorCounts[maxColor] > 0) {
+      return maxColor
     }
 
-    return maxColor
+    // Strategy 3: If no preference, choose randomly
+    const colors: UnoColor[] = ["red", "blue", "green", "yellow"]
+    return colors[Math.floor(Math.random() * colors.length)]
   }
 }
 
@@ -1016,10 +1035,27 @@ export class UnoGame {
           this.lastPlayerWhoSkipped = null
 
           // Handle special card effects
-          this.handleCardEffect(playedCard)
+          if (playedCard.isWildCard()) {
+            // For auto-played Wild cards, we need to handle color choice
+            if (player.isHuman) {
+              // Human player - set phase to choosing_color and wait for input
+              this.phase = "choosing_color"
+              this.debugLog('DRAW', 'Auto-played Wild card - waiting for human color choice')
+              return card
+            } else {
+              // AI player - use AI's color choice
+              const aiChosenColor = player.chooseWildColor()
+              this.handleCardEffect(playedCard, aiChosenColor)
+            }
+          } else {
+            // Non-Wild card - handle normally
+            this.handleCardEffect(playedCard)
+          }
 
-          // Move to next player
-          this.nextTurn()
+          // Move to next player (only if not waiting for color choice)
+          if (this.phase !== "choosing_color") {
+            this.nextTurn()
+          }
           return card
         }
       } else {

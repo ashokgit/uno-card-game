@@ -13,9 +13,11 @@ import {
     Brain,
     Volume2,
     Info,
-    Star
+    Star,
+    BookOpen
 } from "lucide-react"
 import { GameSettings } from "./game-settings"
+import { RulesModal } from "./rules-modal"
 import { UnoRules } from "@/lib/uno-engine"
 
 interface MainMenuProps {
@@ -24,6 +26,7 @@ interface MainMenuProps {
 
 export function MainMenu({ onStartGame }: MainMenuProps) {
     const [showSettings, setShowSettings] = useState(false)
+    const [showRules, setShowRules] = useState(false)
     const [currentRules, setCurrentRules] = useState<UnoRules>({
         stackDrawTwo: false,
         stackDrawFour: false,
@@ -97,7 +100,7 @@ export function MainMenu({ onStartGame }: MainMenuProps) {
                     </div>
 
                     {/* Main Menu Cards */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
                         {/* Quick Start */}
                         <Card className="p-6 bg-gradient-to-br from-blue-600/40 to-purple-600/40 border-blue-400/40 hover:border-blue-300/70 transition-all duration-300 hover:scale-105 cursor-pointer group shadow-lg hover:shadow-blue-500/20 backdrop-blur-sm" onClick={quickStart}>
                             <div className="text-center">
@@ -122,10 +125,22 @@ export function MainMenu({ onStartGame }: MainMenuProps) {
                             </div>
                         </Card>
 
-                        {/* Game Features */}
-                        <Card className="p-6 bg-gradient-to-br from-amber-600/40 to-orange-600/40 border-amber-400/40 shadow-lg backdrop-blur-sm">
+                        {/* How to Play and Rules */}
+                        <Card className="p-6 bg-gradient-to-br from-amber-600/40 to-orange-600/40 border-amber-400/40 hover:border-amber-300/70 transition-all duration-300 hover:scale-105 cursor-pointer group shadow-lg hover:shadow-amber-500/20 backdrop-blur-sm" onClick={() => setShowRules(true)}>
                             <div className="text-center">
-                                <div className="w-16 h-16 bg-gradient-to-br from-amber-500 to-orange-500 rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg">
+                                <div className="w-16 h-16 bg-gradient-to-br from-amber-500 to-orange-500 rounded-full flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform duration-300 shadow-lg">
+                                    <BookOpen className="w-8 h-8 text-white" />
+                                </div>
+                                <h3 className="text-xl font-bold text-white mb-2">How to Play</h3>
+                                <p className="text-white/90 text-sm mb-4 leading-relaxed font-medium">Learn the rules and strategies</p>
+                                <Badge className="bg-gradient-to-r from-amber-600 to-orange-600 text-white font-semibold shadow-md">Rules & Tips</Badge>
+                            </div>
+                        </Card>
+
+                        {/* Game Features */}
+                        <Card className="p-6 bg-gradient-to-br from-purple-600/40 to-pink-600/40 border-purple-400/40 shadow-lg backdrop-blur-sm">
+                            <div className="text-center">
+                                <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg">
                                     <Star className="w-8 h-8 text-white" />
                                 </div>
                                 <h3 className="text-xl font-bold text-white mb-2">Features</h3>
@@ -204,6 +219,9 @@ export function MainMenu({ onStartGame }: MainMenuProps) {
                 onStartGame={handleStartGame}
                 currentRules={currentRules}
             />
+
+            {/* Rules Modal */}
+            <RulesModal isOpen={showRules} onClose={() => setShowRules(false)} />
         </div>
     )
 }

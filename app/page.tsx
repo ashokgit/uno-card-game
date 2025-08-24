@@ -1207,21 +1207,23 @@ function UnoGameInner() {
     console.log("  - Top card:", topCard.color, topCard.value)
     console.log("  - Wild color:", gameEngine?.getWildColor())
 
+    // Wild cards can always be played
     if (card.color === "wild") {
       console.log("  - Result: true (wild card)")
       return true
     }
 
-    if (gameEngine?.getWildColor() && card.color === gameEngine.getWildColor()) {
-      console.log("  - Result: true (matches wild color)")
+    // Determine the active color - either wild color or top card color
+    const activeColor = gameEngine?.getWildColor() || topCard.color
+    console.log("  - Active color:", activeColor)
+
+    // Check if card matches the active color
+    if (card.color === activeColor) {
+      console.log("  - Result: true (matches active color)")
       return true
     }
 
-    if (card.color === topCard.color) {
-      console.log("  - Result: true (matches color)")
-      return true
-    }
-
+    // Check if card matches the top card's value
     if (card.value === topCard.value && typeof card.value === typeof topCard.value) {
       console.log("  - Result: true (matches value)")
       return true
@@ -2139,7 +2141,7 @@ function UnoGameInner() {
 
                 {/* AI Thinking indicator */}
                 {aiThinking && aiThinking.playerName === player.name && (
-                  <div className="absolute -top-3 -right-3 w-8 h-8 bg-purple-500 rounded-full flex items-center justify-center animate-spin">
+                  <div className="absolute -bottom-3 -right-3 w-8 h-8 bg-purple-500 rounded-full flex items-center justify-center animate-spin">
                     <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full"></div>
                   </div>
                 )}
