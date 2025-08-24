@@ -4,9 +4,22 @@ import { GeistMono } from 'geist/font/mono'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'Ultimate Uno Arena',
-  description: 'Ultimate Uno Arena',
-  generator: 'Ultimate Uno Arena',
+  title: 'UNO Arena - Ultimate Card Game',
+  description: 'Experience the ultimate UNO card game with stunning graphics, smooth animations, and competitive gameplay in the UNO Arena!',
+  generator: 'UNO Arena',
+  keywords: 'UNO, card game, multiplayer, arena, gaming',
+  authors: [{ name: 'UNO Arena Team' }],
+  icons: {
+    icon: '/uno-arena-logo.ico',
+    shortcut: '/uno-arena-logo.ico',
+    apple: '/uno-arena-logo.ico',
+  },
+  openGraph: {
+    title: 'UNO Arena - Ultimate Card Game',
+    description: 'Experience the ultimate UNO card game with stunning graphics, smooth animations, and competitive gameplay in the UNO Arena!',
+    type: 'website',
+    images: ['/uno-arena.png'],
+  },
 }
 
 export default function RootLayout({

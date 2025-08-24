@@ -25,10 +25,10 @@ export interface UnoRules {
   targetScore: number
   debugMode: boolean
   aiDifficulty: 'easy' | 'normal' | 'hard' | 'expert'
-  enableJumpIn: boolean
-  enableSevenZero: boolean
-  enableSwapHands: boolean
-  showDiscardPile: boolean  // If true, expose and allow viewing the full discard pile
+  enableJumpIn: boolean      // Allow players to play identical cards out of turn
+  enableSevenZero: boolean   // Enable 7-0 house rules (hand swapping and rotation)
+  enableSwapHands: boolean   // Enable hand swapping house rule
+  showDiscardPile: boolean   // If true, expose and allow viewing the full discard pile
 }
 
 export const DEFAULT_RULES: UnoRules = {
@@ -76,8 +76,19 @@ export class UnoCard {
     return 0
   }
 
-  canPlayOn(topCard: UnoCard, wildColor?: UnoColor): boolean {
-    // Wild cards can always be played
+  canPlayOn(topCard: UnoCard, wildColor?: UnoColor, playerHand?: UnoCard[]): boolean {
+    // Wild Draw Four restriction check
+    if (this.color === "wild" && this.value === "Wild Draw Four" && playerHand) {
+      const currentActiveColor = wildColor || topCard.color
+      const hasMatchingColor = playerHand.some((c) =>
+        c.color === currentActiveColor && c.id !== this.id
+      )
+      if (hasMatchingColor) {
+        return false // Cannot play Wild Draw Four if player has matching color cards
+      }
+    }
+
+    // Wild cards can always be played (except Wild Draw Four with restrictions)
     if (this.color === "wild") return true
 
     // If there's a wild color choice, match that
@@ -160,7 +171,7 @@ export class UnoDeck {
     return drawnCards
   }
 
-  private reshuffleDiscardPile(): void {
+  public reshuffleDiscardPile(): void {
     if (this.discardPile.length <= 1) return
 
     // Keep top card, shuffle rest back into deck
@@ -236,7 +247,7 @@ export class UnoPlayer {
   }
 
   getPlayableCards(topCard: UnoCard, wildColor?: UnoColor): UnoCard[] {
-    return this.hand.filter((card) => card.canPlayOn(topCard, wildColor))
+    return this.hand.filter((card) => card.canPlayOn(topCard, wildColor, this.hand))
   }
 
   callUno(): void {
@@ -448,9 +459,10 @@ export class UnoGame {
     // Handle all action cards as first card according to official rules
     while (firstCard?.isActionCard()) {
       if (firstCard.value === "Wild Draw Four") {
-        // Wild Draw Four cannot be the first card - reshuffle
-        this.log("Wild Draw Four as first card - reshuffling")
-        this.deck = new UnoDeck()
+        // Wild Draw Four cannot be the first card - return to deck, shuffle, and draw new card
+        this.log("Wild Draw Four as first card - returning to deck and reshuffling")
+        this.deck.playCard(firstCard) // Add it back to the discard pile temporarily
+        this.deck.reshuffleDiscardPile() // This will shuffle it back into the deck
         firstCard = this.deck.drawCard()
       } else {
         // Apply effect to first player for other action cards
@@ -533,20 +545,43 @@ export class UnoGame {
     return true
   }
 
-  playCard(playerId: string, cardId: string, chosenWildColor?: UnoColor): boolean {
+  /**
+   * Play a card from a player's hand
+   * @param playerId - ID of the player playing the card
+   * @param cardId - ID of the card to play
+   * @param chosenWildColor - Color chosen for wild cards
+   * @param isUnoCall - Whether the player is calling UNO with this play (for smoother UX)
+   * @returns true if the card was played successfully
+   */
+  playCard(playerId: string, cardId: string, chosenWildColor?: UnoColor, isUnoCall: boolean = false): boolean {
     const player = this.players.find((p) => p.id === playerId)
     const topCard = this.deck.getTopCard()
 
     if (!player || !topCard) return false
-    if (this.getCurrentPlayer().id !== playerId) return false
+
+    // Check if this is a valid play (either current player's turn or jump-in)
+    const isCurrentPlayer = this.getCurrentPlayer().id === playerId
+    const isJumpIn = this.rules.enableJumpIn && !isCurrentPlayer && this.phase === "playing"
+
+    if (!isCurrentPlayer && !isJumpIn) return false
 
     if (this.phase !== "playing") {
       this.log("Cannot play card - invalid phase:", this.phase)
       return false
     }
 
+    // For jump-in, verify the card is an exact match to the top card
+    if (isJumpIn) {
+      const card = player.getHand().find((c) => c.id === cardId)
+      if (!card || card.color !== topCard.color || card.value !== topCard.value) {
+        this.log("Jump-in failed - card must be exact match")
+        return false
+      }
+      this.log("Jump-in successful -", player.name, "jumps in with", card.color, card.value)
+    }
+
     const card = player.getHand().find((c) => c.id === cardId)
-    if (!card || !card.canPlayOn(topCard, this.wildColor || undefined)) return false
+    if (!card || !card.canPlayOn(topCard, this.wildColor || undefined, player.getHand())) return false
 
     // Store the current active color before playing the card
     this.previousActiveColor = this.wildColor || topCard.color
@@ -563,16 +598,17 @@ export class UnoGame {
       }
     }
 
-    // Handle Wild Draw Four challenge rule
+    // Handle Wild Draw Four challenge rule (backup verification)
     if (card.value === "Wild Draw Four") {
       const hasMatchingColor = player.getHand().some((c) =>
         c.color === this.previousActiveColor && c.id !== cardId
       )
       if (hasMatchingColor) {
-        // Player has a matching color card - they shouldn't play Wild Draw Four
-        // This will be challenged by the next player
-        this.log("Wild Draw Four played but player has matching color - challengeable")
+        // This should not happen with the new validation, but keep as backup
+        this.log("Wild Draw Four validation failed - player has matching color cards")
+        return false
       }
+      this.log("Wild Draw Four played legally - no matching color cards found")
     }
 
     // Remove card from player's hand and play it
@@ -587,14 +623,14 @@ export class UnoGame {
 
     // Handle UNO call with proper timing
     if (player.hasOneCard()) {
-      if (!player.getHasCalledUno()) {
-        // Start UNO challenge timer instead of immediate penalty
-        this.startUnoChallengeTimer(player)
-      } else {
-        // Player called UNO correctly
+      if (isUnoCall || player.getHasCalledUno()) {
+        // Player called UNO correctly (either via parameter or previous call)
         this.lastPlayerWithOneCard = player
         this.clearUnoChallengeTimer(player.id)
         this.emitEvent('onUnoCalled', player)
+      } else {
+        // Start UNO challenge timer instead of immediate penalty
+        this.startUnoChallengeTimer(player)
       }
     }
 
@@ -607,9 +643,19 @@ export class UnoGame {
     // Handle special card effects
     this.handleCardEffect(playedCard, chosenWildColor)
 
-    // Move to next player (unless we're choosing a player for swap)
+    // Handle turn management
     if (this.phase === "playing") {
-      this.nextTurn()
+      if (isJumpIn) {
+        // For jump-in, set the jumping player as the current player
+        const jumpInPlayerIndex = this.players.findIndex(p => p.id === playerId)
+        if (jumpInPlayerIndex !== -1) {
+          this.currentPlayerIndex = jumpInPlayerIndex
+          this.log("Turn transferred to jumping player:", player.name)
+        }
+      } else {
+        // Normal turn progression
+        this.nextTurn()
+      }
     }
 
     return true
@@ -773,7 +819,7 @@ export class UnoGame {
       player.addCards([card])
 
       // Check if the drawn card is playable
-      const drawnCardPlayable = card.canPlayOn(topCard, this.wildColor || undefined)
+      const drawnCardPlayable = card.canPlayOn(topCard, this.wildColor || undefined, [])
 
       // Handle drawn card according to rules
       if (drawnCardPlayable && this.rules.mustPlayIfDrawable) {
@@ -826,8 +872,9 @@ export class UnoGame {
 
   callUno(playerId: string): boolean {
     const player = this.players.find((p) => p.id === playerId)
-    if (!player || !player.hasOneCard()) return false
+    if (!player) return false
 
+    // Allow calling UNO even if player has more than one card (for false UNO challenges)
     player.callUno()
     return true
   }
@@ -865,12 +912,50 @@ export class UnoGame {
     return false
   }
 
+  // Challenge a player for making a false UNO call (calling UNO when they have more than one card)
+  challengeFalseUno(challengerId: string, targetPlayerId: string): boolean {
+    const challenger = this.players.find((p) => p.id === challengerId)
+    const targetPlayer = this.players.find((p) => p.id === targetPlayerId)
+
+    if (!challenger || !targetPlayer) return false
+
+    // Check if target player called UNO but has more than one card
+    if (targetPlayer.getHasCalledUno() && !targetPlayer.hasOneCard()) {
+      // Target player gets penalty (draw 2 cards) for false UNO call
+      const penaltyCards = this.deck.drawCards(2)
+      targetPlayer.addCards(penaltyCards)
+      targetPlayer.resetUnoCall()
+
+      this.log("False UNO challenge successful - penalty applied to", targetPlayer.name)
+
+      // Emit UNO challenge event (successful false UNO challenge)
+      this.emitEvent('onUnoChallenged', challenger, targetPlayer, true)
+
+      return true
+    }
+
+    this.log("False UNO challenge failed - no penalty applied")
+
+    // Emit UNO challenge event (failed false UNO challenge)
+    this.emitEvent('onUnoChallenged', challenger, targetPlayer, false)
+
+    return false
+  }
+
   // Check if a player can be challenged for UNO
   canChallengeUno(targetPlayerId: string): boolean {
     const targetPlayer = this.players.find((p) => p.id === targetPlayerId)
     if (!targetPlayer) return false
 
     return targetPlayer.shouldBePenalizedForUno()
+  }
+
+  // Check if a player can be challenged for false UNO call
+  canChallengeFalseUno(targetPlayerId: string): boolean {
+    const targetPlayer = this.players.find((p) => p.id === targetPlayerId)
+    if (!targetPlayer) return false
+
+    return targetPlayer.getHasCalledUno() && !targetPlayer.hasOneCard()
   }
 
   // Challenge a Wild Draw Four play
@@ -892,6 +977,10 @@ export class UnoGame {
       // Challenge succeeds: target player penalized
       const penalty = this.deck.drawCards(4)
       targetPlayer.addCards(penalty)
+      // Clear the draw penalty since the challenge resolved it
+      this.drawPenalty = 0
+      // Reset skipNext so the challenger can play next (they successfully challenged)
+      this.skipNext = false
       this.emitEvent("onWildDrawFourChallenged", challenger, targetPlayer, true)
       this.log("Wild Draw Four challenge SUCCESS -", targetPlayer.name, "penalized")
       return true
@@ -899,6 +988,9 @@ export class UnoGame {
       // Challenge fails: challenger penalized
       const penalty = this.deck.drawCards(6)
       challenger.addCards(penalty)
+      // Clear the draw penalty since the 6-card penalty fulfills the original 4-card penalty
+      this.drawPenalty = 0
+      // Keep skipNext = true so the challenger's turn is skipped (they failed the challenge)
       this.emitEvent("onWildDrawFourChallenged", challenger, targetPlayer, false)
       this.log("Wild Draw Four challenge FAILED -", challenger.name, "penalized")
       return false
@@ -910,6 +1002,39 @@ export class UnoGame {
     const targetPlayer = this.players.find(p => p.id === targetPlayerId)
     const topCard = this.getTopCard()
     return !!(targetPlayer && topCard?.value === "Wild Draw Four" && this.previousActiveColor)
+  }
+
+  // Check if a player can jump in with a specific card
+  canJumpIn(playerId: string, cardId: string): boolean {
+    if (!this.rules.enableJumpIn || this.phase !== "playing") return false
+
+    const player = this.players.find(p => p.id === playerId)
+    const topCard = this.getTopCard()
+
+    if (!player || !topCard) return false
+
+    // Can't jump in on your own turn
+    if (this.getCurrentPlayer().id === playerId) return false
+
+    const card = player.getHand().find(c => c.id === cardId)
+    if (!card) return false
+
+    // Card must be an exact match (same color and value)
+    return card.color === topCard.color && card.value === topCard.value
+  }
+
+  // Get all cards a player can use to jump in
+  getJumpInCards(playerId: string): UnoCard[] {
+    if (!this.rules.enableJumpIn || this.phase !== "playing") return []
+
+    const player = this.players.find(p => p.id === playerId)
+    const topCard = this.getTopCard()
+
+    if (!player || !topCard || this.getCurrentPlayer().id === playerId) return []
+
+    return player.getHand().filter(card =>
+      card.color === topCard.color && card.value === topCard.value
+    )
   }
 
   private nextTurn(): void {
@@ -1072,6 +1197,7 @@ export class UnoGame {
           color: card.color,
           value: card.value,
         })) : [],
+        jumpInEnabled: this.rules.enableJumpIn,
       },
       roundInfo: {
         roundWinner: this.roundWinner ? {

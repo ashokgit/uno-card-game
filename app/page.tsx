@@ -1706,12 +1706,25 @@ export default function UnoGame() {
 
       {/* Center Game Area */}
       <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-40">
-        {/* Uno Arena Imprinted Text */}
-        <div className="uno-arena-text fascinate-regular">
-          UNO ARENA
+        {/* Uno Arena Logo */}
+        <div className="flex flex-col items-center gap-4 mb-8">
+          <div className="relative">
+            <img
+              src="/uno-arena.png"
+              alt="UNO Arena Logo"
+              className="w-48 h-48 object-contain drop-shadow-2xl animate-pulse"
+              style={{ animationDuration: '3s' }}
+            />
+            {/* Enhanced glow effect for the logo */}
+            <div className="absolute inset-0 bg-yellow-400/20 rounded-full blur-2xl animate-pulse scale-150"></div>
+            <div className="absolute inset-0 bg-white/10 rounded-full blur-xl animate-ping scale-125"></div>
+          </div>
+          <div className="uno-arena-text fascinate-regular text-3xl">
+            UNO ARENA
+          </div>
         </div>
 
-        <div className="flex items-center gap-8">
+        <div className="flex items-center gap-8 mt-4">
           <div data-deck>
             <EnhancedDeck
               deckCount={gameEngine?.getDeckCount() || 0}
@@ -1902,48 +1915,7 @@ export default function UnoGame() {
         ))}
       </div>
 
-      <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-10">
-        <div className="flex items-center gap-8">
-          <div data-deck>
-            <EnhancedDeck
-              deckCount={gameEngine?.getDeckCount() || 0}
-              isDrawable={!playDelay && (gameEngine?.getDeckCount() || 0) > 0}
-              isPlayerTurn={players[0]?.isActive || false}
-              onClick={drawCard}
-            />
-          </div>
 
-          <div className="relative" data-center-pile>
-            <EnhancedDiscardPile
-              currentCard={currentCard}
-              isAnimating={isAnimating}
-            />
-            <div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
-              <Badge className="bg-yellow-400 text-black animate-bounce font-bold shadow-xl flex items-center gap-2 px-3 py-1 font-gaming-secondary">
-                <ArrowRight className="w-4 h-4" />
-                Current Card
-              </Badge>
-            </div>
-          </div>
-        </div>
-
-        <div className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 z-20 flex flex-col gap-2">
-          <Badge variant="outline" className="text-xs bg-black/50 text-white border-white/20 flex items-center gap-1 font-gaming-secondary">
-            {direction === "clockwise" ? <RotateCw className="w-3 h-3" /> : <RotateCcw className="w-3 h-3" />}
-            {direction}
-          </Badge>
-          {gameEngine?.getDrawPenalty() > 0 && (
-            <Badge className="text-xs bg-red-500 text-white animate-pulse font-gaming-secondary">
-              Draw {gameEngine.getDrawPenalty()} cards!
-            </Badge>
-          )}
-          {gameEngine?.getLastActionCard() && gameEngine.getDrawPenalty() > 0 && (
-            <Badge className="text-xs bg-orange-500 text-white font-gaming-secondary">
-              Stackable: {gameEngine.getLastActionCard()?.value}
-            </Badge>
-          )}
-        </div>
-      </div>
 
       {/* Current Player Area - Casino Style Bottom Board */}
       <div className="absolute bottom-0 left-0 right-0 h-[45vh] z-20" data-user-hand>
