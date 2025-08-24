@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -93,6 +93,57 @@ export default function UnoGame() {
   const [showActionConfirm, setShowActionConfirm] = useState<{ card: GameCard; confirmed: () => void } | null>(null)
   const [isDeveloperMode, setIsDeveloperMode] = useState(false)
 
+  // Background music state
+  const [isMusicPlaying, setIsMusicPlaying] = useState(false)
+  const [musicVolume, setMusicVolume] = useState(0.3)
+  const backgroundMusicRef = useRef<HTMLAudioElement>(null)
+
+  // Initialize background music
+  useEffect(() => {
+    const audio = new Audio('/heartbeat-01-brvhrtz-225058.mp3')
+    audio.loop = true
+    audio.volume = musicVolume
+    audio.preload = 'auto'
+    backgroundMusicRef.current = audio
+
+    // Start playing when user interacts with the page
+    const startMusic = () => {
+      if (backgroundMusicRef.current && !isMusicPlaying) {
+        backgroundMusicRef.current.play().then(() => {
+          setIsMusicPlaying(true)
+        }).catch((error) => {
+          console.log('Background music autoplay prevented:', error)
+        })
+        // Remove event listeners after first interaction
+        document.removeEventListener('click', startMusic)
+        document.removeEventListener('keydown', startMusic)
+        document.removeEventListener('touchstart', startMusic)
+      }
+    }
+
+    // Add event listeners for user interaction
+    document.addEventListener('click', startMusic)
+    document.addEventListener('keydown', startMusic)
+    document.addEventListener('touchstart', startMusic)
+
+    return () => {
+      if (backgroundMusicRef.current) {
+        backgroundMusicRef.current.pause()
+        backgroundMusicRef.current = null
+      }
+      document.removeEventListener('click', startMusic)
+      document.removeEventListener('keydown', startMusic)
+      document.removeEventListener('touchstart', startMusic)
+    }
+  }, [])
+
+  // Update music volume when it changes
+  useEffect(() => {
+    if (backgroundMusicRef.current) {
+      backgroundMusicRef.current.volume = musicVolume
+    }
+  }, [musicVolume])
+
   useEffect(() => {
     const playerNames = ["You", "Alice", "Bob", "Carol", "Dave", "Eve"]
     const engine = new GameEngine(playerNames, 0, { showDiscardPile: true }) // Human player at index 0
@@ -132,12 +183,23 @@ export default function UnoGame() {
         drawCard()
       } else if (key === 'u' && players[0] && players[0].cardCount === 1) {
         callUno()
+      } else if (key === 'm') {
+        // Toggle background music
+        if (backgroundMusicRef.current) {
+          if (isMusicPlaying) {
+            backgroundMusicRef.current.pause()
+            setIsMusicPlaying(false)
+          } else {
+            backgroundMusicRef.current.play()
+            setIsMusicPlaying(true)
+          }
+        }
       }
     }
 
     window.addEventListener('keydown', handleKeyPress)
     return () => window.removeEventListener('keydown', handleKeyPress)
-  }, [players, playDelay, gameEngine])
+  }, [players, playDelay, gameEngine, isMusicPlaying])
 
   // Object pooling for animations
   const getAnimationFromPool = (): AnimatedCard => {
@@ -1028,6 +1090,15 @@ export default function UnoGame() {
       setCurrentPlayerId(gameEngine.getCurrentPlayer().id)
 
       playSound("shuffle")
+
+      // Start background music when game initializes
+      if (backgroundMusicRef.current && !isMusicPlaying) {
+        backgroundMusicRef.current.play().then(() => {
+          setIsMusicPlaying(true)
+        }).catch((error) => {
+          console.log('Background music autoplay prevented:', error)
+        })
+      }
     }
   }, [gameEngine])
 
@@ -1528,6 +1599,44 @@ export default function UnoGame() {
 
       {/* Top-left controls */}
       <div className="absolute top-4 left-4 flex items-center gap-4 z-10">
+        {/* Background Music Controls */}
+        <div className={`bg-black/50 text-white p-2 rounded-lg border border-white/20 flex items-center gap-2 transition-all duration-300 ${isMusicPlaying ? 'border-yellow-400/50 shadow-lg shadow-yellow-400/20' : ''}`}>
+          <Button
+            size="sm"
+            variant="ghost"
+            className={`text-white hover:text-gray-300 p-1 transition-all duration-300 ${isMusicPlaying ? 'animate-pulse' : ''}`}
+            onClick={() => {
+              if (backgroundMusicRef.current) {
+                if (isMusicPlaying) {
+                  backgroundMusicRef.current.pause()
+                  setIsMusicPlaying(false)
+                } else {
+                  backgroundMusicRef.current.play()
+                  setIsMusicPlaying(true)
+                }
+              }
+            }}
+            title={isMusicPlaying ? "Pause Music" : "Play Music"}
+          >
+            {isMusicPlaying ? "🔊" : "🔇"}
+          </Button>
+          <div className="flex flex-col items-center gap-1">
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.1"
+              value={musicVolume}
+              onChange={(e) => setMusicVolume(parseFloat(e.target.value))}
+              className="w-16 h-2 bg-white/20 rounded-lg appearance-none cursor-pointer slider"
+              title="Music Volume"
+            />
+            <span className="text-xs text-white/70 font-gaming-secondary">
+              {Math.round(musicVolume * 100)}%
+            </span>
+          </div>
+        </div>
+
         {/* Developer Mode Toggle */}
         <Button
           size="sm"
@@ -1561,6 +1670,9 @@ export default function UnoGame() {
           </div>
           <div className={`${players[0] && players[0].cardCount === 1 ? 'text-green-400' : 'text-gray-400'}`}>
             U - Call UNO
+          </div>
+          <div className="text-blue-400">
+            M - Toggle Music
           </div>
         </div>
 
