@@ -7,13 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import {
     Play,
     Settings,
-    Trophy,
-    Users,
-    Zap,
-    Brain,
-    Volume2,
     Info,
-    Star,
     BookOpen
 } from "lucide-react"
 import { GameSettings } from "./game-settings"
@@ -100,66 +94,44 @@ export function MainMenu({ onStartGame }: MainMenuProps) {
                     </div>
 
                     {/* Main Menu Cards */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8 max-w-5xl mx-auto">
                         {/* Quick Start */}
-                        <Card className="p-6 bg-gradient-to-br from-blue-600/40 to-purple-600/40 border-blue-400/40 hover:border-blue-300/70 transition-all duration-300 hover:scale-105 cursor-pointer group shadow-lg hover:shadow-blue-500/20 backdrop-blur-sm" onClick={quickStart}>
+                        <Card className="p-8 bg-gradient-to-br from-blue-600/40 to-purple-600/40 border-blue-400/40 hover:border-blue-300/70 transition-all duration-300 hover:scale-105 cursor-pointer group shadow-lg hover:shadow-blue-500/20 backdrop-blur-sm" onClick={quickStart}>
                             <div className="text-center">
-                                <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform duration-300 shadow-lg">
-                                    <Play className="w-8 h-8 text-white" />
+                                <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition-transform duration-300 shadow-lg">
+                                    <Play className="w-10 h-10 text-white" />
                                 </div>
-                                <h3 className="text-xl font-bold text-white mb-2">Quick Start</h3>
-                                <p className="text-white/90 text-sm mb-4 leading-relaxed font-medium">Jump right into the action with default settings</p>
-                                <Badge className="bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold shadow-md">6 Players • Expert AI</Badge>
+                                <h3 className="text-2xl font-bold text-white mb-3">Quick Start</h3>
+                                <p className="text-white/90 text-base mb-6 leading-relaxed font-medium">Jump right into the action with default settings</p>
+                                <Badge className="bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold shadow-md text-sm px-4 py-2">6 Players • Expert AI</Badge>
                             </div>
                         </Card>
 
                         {/* Custom Game */}
-                        <Card className="p-6 bg-gradient-to-br from-emerald-600/40 to-teal-600/40 border-emerald-400/40 hover:border-emerald-300/70 transition-all duration-300 hover:scale-105 cursor-pointer group shadow-lg hover:shadow-emerald-500/20 backdrop-blur-sm" onClick={() => setShowSettings(true)}>
+                        <Card className="p-8 bg-gradient-to-br from-emerald-600/40 to-teal-600/40 border-emerald-400/40 hover:border-emerald-300/70 transition-all duration-300 hover:scale-105 cursor-pointer group shadow-lg hover:shadow-emerald-500/20 backdrop-blur-sm" onClick={() => setShowSettings(true)}>
                             <div className="text-center">
-                                <div className="w-16 h-16 bg-gradient-to-br from-emerald-500 to-teal-500 rounded-full flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform duration-300 shadow-lg">
-                                    <Settings className="w-8 h-8 text-white" />
+                                <div className="w-20 h-20 bg-gradient-to-br from-emerald-500 to-teal-500 rounded-full flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition-transform duration-300 shadow-lg">
+                                    <Settings className="w-10 h-10 text-white" />
                                 </div>
-                                <h3 className="text-xl font-bold text-white mb-2">Custom Game</h3>
-                                <p className="text-white/90 text-sm mb-4 leading-relaxed font-medium">Configure rules, AI difficulty, and more</p>
-                                <Badge className="bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-semibold shadow-md">Fully Customizable</Badge>
+                                <h3 className="text-2xl font-bold text-white mb-3">Custom Game</h3>
+                                <p className="text-white/90 text-base mb-6 leading-relaxed font-medium">Configure rules, AI difficulty, and more</p>
+                                <Badge className="bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-semibold shadow-md text-sm px-4 py-2">Fully Customizable</Badge>
                             </div>
                         </Card>
 
                         {/* How to Play and Rules */}
-                        <Card className="p-6 bg-gradient-to-br from-amber-600/40 to-orange-600/40 border-amber-400/40 hover:border-amber-300/70 transition-all duration-300 hover:scale-105 cursor-pointer group shadow-lg hover:shadow-amber-500/20 backdrop-blur-sm" onClick={() => setShowRules(true)}>
+                        <Card className="p-8 bg-gradient-to-br from-amber-600/40 to-orange-600/40 border-amber-400/40 hover:border-amber-300/70 transition-all duration-300 hover:scale-105 cursor-pointer group shadow-lg hover:shadow-amber-500/20 backdrop-blur-sm" onClick={() => setShowRules(true)}>
                             <div className="text-center">
-                                <div className="w-16 h-16 bg-gradient-to-br from-amber-500 to-orange-500 rounded-full flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform duration-300 shadow-lg">
-                                    <BookOpen className="w-8 h-8 text-white" />
+                                <div className="w-20 h-20 bg-gradient-to-br from-amber-500 to-orange-500 rounded-full flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition-transform duration-300 shadow-lg">
+                                    <BookOpen className="w-10 h-10 text-white" />
                                 </div>
-                                <h3 className="text-xl font-bold text-white mb-2">How to Play</h3>
-                                <p className="text-white/90 text-sm mb-4 leading-relaxed font-medium">Learn the rules and strategies</p>
-                                <Badge className="bg-gradient-to-r from-amber-600 to-orange-600 text-white font-semibold shadow-md">Rules & Tips</Badge>
+                                <h3 className="text-2xl font-bold text-white mb-3">How to Play</h3>
+                                <p className="text-white/90 text-base mb-6 leading-relaxed font-medium">Learn the rules and strategies</p>
+                                <Badge className="bg-gradient-to-r from-amber-600 to-orange-600 text-white font-semibold shadow-md text-sm px-4 py-2">Rules & Tips</Badge>
                             </div>
                         </Card>
 
-                        {/* Game Features */}
-                        <Card className="p-6 bg-gradient-to-br from-purple-600/40 to-pink-600/40 border-purple-400/40 shadow-lg backdrop-blur-sm">
-                            <div className="text-center">
-                                <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg">
-                                    <Star className="w-8 h-8 text-white" />
-                                </div>
-                                <h3 className="text-xl font-bold text-white mb-2">Features</h3>
-                                <div className="space-y-3 text-sm">
-                                    <div className="flex items-center justify-center gap-3 bg-black/20 rounded-lg p-2 border border-white/10">
-                                        <Brain className="w-5 h-5 text-cyan-400" />
-                                        <span className="text-white font-semibold">Smart AI Opponents</span>
-                                    </div>
-                                    <div className="flex items-center justify-center gap-3 bg-black/20 rounded-lg p-2 border border-white/10">
-                                        <Zap className="w-5 h-5 text-yellow-400" />
-                                        <span className="text-white font-semibold">House Rules Support</span>
-                                    </div>
-                                    <div className="flex items-center justify-center gap-3 bg-black/20 rounded-lg p-2 border border-white/10">
-                                        <Volume2 className="w-5 h-5 text-emerald-400" />
-                                        <span className="text-white font-semibold">Sound & Music</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </Card>
+
                     </div>
 
                     {/* Current Settings Preview */}

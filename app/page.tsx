@@ -887,52 +887,49 @@ function UnoGameInner() {
       try {
         console.log("[DEBUG] AI turn execution starting for:", currentPlayer.name)
 
-        // First, determine what the AI will do
+        // First, determine what the AI will do using the game engine's authoritative logic
         const topCard = gameEngine.getTopCard()
         let cardToPlay: GameCard | null = null
         let chosenWildColor: string | undefined = undefined
         let shouldDraw = false
 
         if (topCard) {
-          // Convert topCard to GameCard format for comparison
-          const topGameCard: GameCard = {
-            id: Number.parseInt(topCard.id),
-            color: topCard.color,
-            value: topCard.value,
-            isPlayable: false
-          }
+          // Use the game engine's getPlayableCards method as the single source of truth
+          const playableCards = currentPlayer.getPlayableCards(topCard, gameEngine.getWildColor() || undefined)
 
-          // Find a playable card in AI's hand
-          const aiHand = currentPlayer.getHand()
-          for (const card of aiHand) {
-            const gameCard: GameCard = {
-              id: Number.parseInt(card.id),
-              color: card.color,
-              value: card.value,
+          console.log("[DEBUG] AI playable cards check:")
+          console.log("  - Top card:", topCard.color, topCard.value)
+          console.log("  - Wild color:", gameEngine.getWildColor())
+          console.log("  - AI hand:", currentPlayer.getHand().map(c => `${c.color} ${c.value}`))
+          console.log("  - Playable cards:", playableCards.map(c => `${c.color} ${c.value}`))
+
+          if (playableCards.length > 0) {
+            // AI has playable cards - choose one using strategy
+            const chosenCard = playableCards[0] // Simple strategy: play first playable card
+
+            cardToPlay = {
+              id: Number.parseInt(chosenCard.id),
+              color: chosenCard.color,
+              value: chosenCard.value,
               isPlayable: false
             }
 
-            if (canPlayCard(gameCard, topGameCard)) {
-              cardToPlay = gameCard
-              if (card.isWildCard()) {
-                // AI chooses color based on most cards in hand
-                const colorCounts = { red: 0, blue: 0, green: 0, yellow: 0 }
-                aiHand.forEach(c => {
-                  if (c.color !== "wild") {
-                    colorCounts[c.color as keyof typeof colorCounts]++
-                  }
-                })
-                const maxColor = Object.entries(colorCounts).reduce((a, b) =>
-                  colorCounts[a[0] as keyof typeof colorCounts] > colorCounts[b[0] as keyof typeof colorCounts] ? a : b
-                )[0]
-                chosenWildColor = maxColor
-              }
-              break
+            if (chosenCard.isWildCard()) {
+              // AI chooses color based on most cards in hand
+              const aiHand = currentPlayer.getHand()
+              const colorCounts = { red: 0, blue: 0, green: 0, yellow: 0 }
+              aiHand.forEach(c => {
+                if (c.color !== "wild") {
+                  colorCounts[c.color as keyof typeof colorCounts]++
+                }
+              })
+              const maxColor = Object.entries(colorCounts).reduce((a, b) =>
+                colorCounts[a[0] as keyof typeof colorCounts] > colorCounts[b[0] as keyof typeof colorCounts] ? a : b
+              )[0]
+              chosenWildColor = maxColor
             }
-          }
-
-          // If no playable card found, AI should draw
-          if (!cardToPlay) {
+          } else {
+            // No playable cards - AI should draw
             shouldDraw = true
           }
         }
@@ -1202,35 +1199,18 @@ function UnoGameInner() {
   }
 
   const canPlayCard = (card: GameCard, topCard: GameCard): boolean => {
-    console.log("[DEBUG] canPlayCard check:")
-    console.log("  - Card:", card.color, card.value)
-    console.log("  - Top card:", topCard.color, topCard.value)
-    console.log("  - Wild color:", gameEngine?.getWildColor())
+    // Use the game engine's authoritative logic instead of duplicating it
+    if (!gameEngine) return false
 
-    // Wild cards can always be played
-    if (card.color === "wild") {
-      console.log("  - Result: true (wild card)")
-      return true
-    }
+    // Get the current player to use their getPlayableCards method
+    const currentPlayer = gameEngine.getCurrentPlayer()
+    const engineTopCard = gameEngine.getTopCard()
 
-    // Determine the active color - either wild color or top card color
-    const activeColor = gameEngine?.getWildColor() || topCard.color
-    console.log("  - Active color:", activeColor)
+    if (!engineTopCard) return false
 
-    // Check if card matches the active color
-    if (card.color === activeColor) {
-      console.log("  - Result: true (matches active color)")
-      return true
-    }
-
-    // Check if card matches the top card's value
-    if (card.value === topCard.value && typeof card.value === typeof topCard.value) {
-      console.log("  - Result: true (matches value)")
-      return true
-    }
-
-    console.log("  - Result: false (no match)")
-    return false
+    // Check if this card is in the player's playable cards
+    const playableCards = currentPlayer.getPlayableCards(engineTopCard, gameEngine.getWildColor() || undefined)
+    return playableCards.some(playableCard => playableCard.id === card.id.toString())
   }
 
   const playSound = (type: "play" | "draw" | "win" | "uno" | "special" | "shuffle" | "card-flip" | "card-land") => {
@@ -1975,9 +1955,9 @@ function UnoGameInner() {
             <div className="absolute inset-0 bg-yellow-400/20 rounded-full blur-2xl animate-pulse scale-150"></div>
             <div className="absolute inset-0 bg-white/10 rounded-full blur-xl animate-ping scale-125"></div>
           </div>
-          <div className="uno-arena-text fascinate-regular text-3xl">
+          {/* <div className="uno-arena-text fascinate-regular text-3xl">
             UNO ARENA
-          </div>
+          </div> */}
         </div>
 
         <div className="flex items-center gap-8 mt-4">
@@ -2169,7 +2149,7 @@ function UnoGameInner() {
                   {player.cardCount} {player.cardCount === 1 ? 'card' : 'cards'}
                 </Badge>
                 {/* Score display */}
-                <Badge className={`
+                {/* <Badge className={`
                   mt-1 transition-all duration-300
                   ${player.isActive
                     ? "bg-green-500 text-white font-bold"
@@ -2178,7 +2158,7 @@ function UnoGameInner() {
                 `}>
                   <Trophy className="w-3 h-3 mr-1" />
                   {player.score} pts
-                </Badge>
+                </Badge> */}
                 {player.cardCount === 1 && !player.isActive && (
                   <div className="mt-1">
                     <Badge className="bg-red-500 text-white text-xs animate-pulse">
@@ -2228,17 +2208,61 @@ function UnoGameInner() {
                 <div className="absolute -inset-4 bg-gradient-to-r from-yellow-400/20 via-yellow-300/30 to-yellow-400/20 rounded-full blur-xl animate-pulse"></div>
               )}
 
-              {/* Enhanced avatar with turn indicators */}
+              {/* Enhanced avatar with buttons positioned behind */}
               <div className={`
-                relative transition-all duration-500
+                relative transition-all duration-500 flex items-center justify-center
                 ${players[0].isActive
                   ? "ring-4 ring-yellow-400 shadow-2xl shadow-yellow-400/50"
                   : "ring-1 ring-white/20"
                 }
                 rounded-full
               `}>
+                {/* Draw Card Button - Behind Left */}
+                <Button
+                  className="absolute left-[-50px] h-12 w-20 p-0 justify-center bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-lg hover:shadow-xl flex-row items-center gap-2 disabled:opacity-50 transition-all duration-300 transform hover:scale-105 rounded-l-full rounded-r-none z-10"
+                  onClick={drawCard}
+                  disabled={
+                    !players[0]?.isActive ||
+                    gameEngine?.getDeckCount() <= 0 ||
+                    playDelay ||
+                    (players[0]?.cards.some(card => card.isPlayable) || false)
+                  }
+                  title={
+                    !players[0]?.isActive
+                      ? "Not your turn"
+                      : gameEngine?.getDeckCount() <= 0
+                        ? "No cards left to draw"
+                        : playDelay
+                          ? "Please wait"
+                          : (players[0]?.cards.some(card => card.isPlayable) || false)
+                            ? "You have playable cards - play them first!"
+                            : "Draw a card (Press D)"
+                  }
+                >
+                  <Plus className="w-6 h-6 text-white drop-shadow-2xl stroke-2" />
+                  <span className="text-base bg-white text-blue-600 px-2 py-1 rounded-md font-black shadow-2xl border-2 border-blue-600">D</span>
+                </Button>
+
+                {/* UNO Button - Behind Right */}
+                <Button
+                  className="absolute right-[-50px] h-12 w-20 p-0 justify-center bg-red-600 hover:bg-red-700 text-white font-bold shadow-lg hover:shadow-xl flex-row items-center gap-2 transition-all duration-300 transform hover:scale-105 rounded-r-full rounded-l-none disabled:opacity-50 disabled:transform-none z-10"
+                  onClick={callUno}
+                  disabled={!players[0] || players[0].cardCount !== 1}
+                  title={
+                    !players[0]
+                      ? "No player data"
+                      : players[0].cardCount !== 1
+                        ? `Call UNO when you have exactly 1 card (you have ${players[0].cardCount})`
+                        : "Call UNO! (Press U)"
+                  }
+                >
+                  <Zap className="w-6 h-6 text-white drop-shadow-2xl stroke-2" />
+                  <span className="text-base bg-white text-red-600 px-2 py-1 rounded-md font-black shadow-2xl border-2 border-red-600">U</span>
+                </Button>
+
+                {/* Avatar Center - Positioned above buttons */}
                 <Avatar className={`
-                  border-2 transition-all duration-500
+                  border-2 transition-all duration-500 relative z-20
                   ${players[0].isActive ? "w-20 h-20 border-yellow-400" : "w-16 h-16 border-white/30"}
                 `}>
                   <AvatarImage src="/human-avatar.png" alt={players[0].name} />
@@ -2247,13 +2271,13 @@ function UnoGameInner() {
                   </AvatarFallback>
                 </Avatar>
 
-                {/* Active player indicator */}
+                {/* Active player indicator - repositioned */}
                 {players[0].isActive && (
                   <>
-                    <div className="absolute -top-2 -right-2 w-6 h-6 bg-yellow-400 rounded-full flex items-center justify-center animate-bounce">
+                    <div className="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-2 w-6 h-6 bg-yellow-400 rounded-full flex items-center justify-center animate-bounce z-30">
                       <div className="w-3 h-3 bg-yellow-600 rounded-full"></div>
                     </div>
-                    <div className="absolute inset-0 ring-2 ring-yellow-300/50 rounded-full animate-ping"></div>
+                    <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-20 h-20 ring-2 ring-yellow-300/50 rounded-full animate-ping z-10"></div>
                   </>
                 )}
               </div>
@@ -2277,7 +2301,7 @@ function UnoGameInner() {
                   {players[0].cardCount} {players[0].cardCount === 1 ? 'card' : 'cards'}
                 </Badge>
                 {/* Score display for current player */}
-                <Badge className={`
+                {/* <Badge className={`
                   mt-1 transition-all duration-300
                   ${players[0].isActive
                     ? "bg-green-500 text-white font-bold"
@@ -2286,7 +2310,7 @@ function UnoGameInner() {
                 `}>
                   <Trophy className="w-3 h-3 mr-1" />
                   {players[0].score} pts
-                </Badge>
+                </Badge> */}
               </div>
             </div>
           )}
@@ -2384,53 +2408,10 @@ function UnoGameInner() {
         </div>
       </div>
 
-      {/* Action Buttons - Bottom Right Corner */}
-      <div className="absolute bottom-8 right-8 flex flex-col gap-4 z-40">
-        <Button
-          size="lg"
-          className="bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 text-white font-bold shadow-xl hover:shadow-2xl hover:shadow-blue-400/50 flex items-center gap-2 disabled:opacity-50 transition-all duration-300 min-h-[44px] font-gaming-secondary"
-          onClick={drawCard}
-          disabled={
-            !players[0]?.isActive ||
-            gameEngine?.getDeckCount() <= 0 ||
-            playDelay ||
-            (players[0]?.cards.some(card => card.isPlayable) || false)
-          }
-          title={
-            !players[0]?.isActive
-              ? "Not your turn"
-              : gameEngine?.getDeckCount() <= 0
-                ? "No cards left to draw"
-                : playDelay
-                  ? "Please wait"
-                  : (players[0]?.cards.some(card => card.isPlayable) || false)
-                    ? "You have playable cards - play them first!"
-                    : "Draw a card (Press D)"
-          }
-        >
-          <Plus className="w-5 h-5" />
-          Draw Card
-          <span className="text-xs opacity-70 ml-1">(D)</span>
-        </Button>
-        <Button
-          size="lg"
-          className="bg-gradient-to-r from-red-600 to-red-500 hover:from-red-700 hover:to-red-600 text-white font-bold shadow-xl hover:shadow-2xl hover:shadow-red-400/50 flex items-center gap-2 transition-all duration-300 min-h-[44px] font-gaming-secondary"
-          onClick={callUno}
-          disabled={!players[0] || players[0].cardCount !== 1}
-          title={
-            !players[0]
-              ? "No player data"
-              : players[0].cardCount !== 1
-                ? `Call UNO when you have exactly 1 card (you have ${players[0].cardCount})`
-                : "Call UNO! (Press U)"
-          }
-        >
-          <Zap className="w-5 h-5" />
-          UNO!
-          <span className="text-xs opacity-70 ml-1">(U)</span>
-        </Button>
 
-        {/* View Logs Button */}
+
+      {/* View Logs Button - Top Right Corner */}
+      <div className="absolute top-8 right-8 z-40">
         <Button
           size="sm"
           variant="outline"
