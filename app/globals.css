@@ -677,3 +677,101 @@
       0 0 40px rgba(251, 191, 36, 0.4);
   }
 }
+
+/* Enhanced feedback animations */
+@keyframes slideInDown {
+  0% {
+    transform: translateY(-100px) translateX(-50%);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0) translateX(-50%);
+    opacity: 1;
+  }
+}
+
+@keyframes fadeOut {
+  0% {
+    opacity: 1;
+    transform: translateY(0) translateX(-50%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-20px) translateX(-50%) scale(0.95);
+  }
+}
+
+/* Spotlight effect for active players */
+@keyframes spotlight-effect {
+  0%, 100% {
+    opacity: 0.3;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(1.1);
+  }
+}
+
+/* Enhanced player turn indicators */
+.player-turn-indicator {
+  position: relative;
+  overflow: visible;
+}
+
+.player-turn-indicator::before {
+  content: '';
+  position: absolute;
+  inset: -8px;
+  background: radial-gradient(circle, rgba(255, 215, 0, 0.4) 0%, transparent 70%);
+  border-radius: 50%;
+  animation: spotlight-effect 2s ease-in-out infinite;
+  z-index: -1;
+}
+
+/* Crown animation for active player */
+@keyframes crown-bounce {
+  0%, 100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  25% {
+    transform: translateY(-2px) rotate(-5deg);
+  }
+  75% {
+    transform: translateY(-2px) rotate(5deg);
+  }
+}
+
+.crown-animation {
+  animation: crown-bounce 1s ease-in-out infinite;
+}
+
+/* Particle effects for perfect moves */
+@keyframes particle-float {
+  0% {
+    transform: translateY(0) translateX(0) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-100px) translateX(var(--particle-x, 0)) scale(0);
+    opacity: 0;
+  }
+}
+
+.particle-effect {
+  animation: particle-float 2s ease-out forwards;
+}
+
+/* Enhanced avatar glow effects */
+.avatar-glow-active {
+  box-shadow: 
+    0 0 20px rgba(255, 215, 0, 0.6),
+    0 0 40px rgba(255, 215, 0, 0.3),
+    0 0 60px rgba(255, 215, 0, 0.1);
+}
+
+.avatar-glow-next {
+  box-shadow: 
+    0 0 15px rgba(59, 130, 246, 0.4),
+    0 0 30px rgba(59, 130, 246, 0.2);
+}

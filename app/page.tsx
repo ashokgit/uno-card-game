@@ -322,7 +322,7 @@ export default function UnoGame() {
     const moveEvaluation = evaluateMove(cardToPlay, { currentCard, direction, players })
     setFeedback(moveEvaluation)
 
-    setTimeout(() => setFeedback(null), 2000)
+    setTimeout(() => setFeedback(null), 5000)
 
     const userHandElement = document.querySelector("[data-user-hand]")
     const centerElement = document.querySelector("[data-center-pile]")
@@ -518,6 +518,22 @@ export default function UnoGame() {
       const drawnCard = gameEngine.drawCard("player_0")
       console.log("[v0] User draw result, New current player:", gameEngine.getCurrentPlayer().name)
 
+      // Enhanced draw card feedback
+      if (drawnCard) {
+        const drawMessages = [
+          "🎴 Card drawn! Let's see what you got!",
+          "📚 New card in hand! Time to strategize!",
+          "🃏 Fresh card! Make it count!",
+          "✨ New addition to your arsenal!",
+          "🎯 Card acquired! Plan your next move!"
+        ]
+        setFeedback({
+          message: drawMessages[Math.floor(Math.random() * drawMessages.length)],
+          type: "good"
+        })
+        setTimeout(() => setFeedback(null), 5000)
+      }
+
       const gameData = convertToUIFormat()
       setPlayers(gameData.players)
       setCurrentCard(gameData.currentCard)
@@ -532,6 +548,20 @@ export default function UnoGame() {
     if (!gameEngine || players[0]?.cardCount !== 1) return
     playSound("uno")
     gameEngine.callUno("player_0")
+
+    // Enhanced UNO call feedback
+    const unoMessages = [
+      "🎉 UNO! You're almost there!",
+      "🔥 UNO! The heat is on!",
+      "⚡ UNO! Lightning fast!",
+      "🌟 UNO! You're shining bright!",
+      "💪 UNO! Show them your power!"
+    ]
+    setFeedback({
+      message: unoMessages[Math.floor(Math.random() * unoMessages.length)],
+      type: "perfect"
+    })
+    setTimeout(() => setFeedback(null), 5000)
   }
 
   const challengeUno = (targetPlayerId: string) => {
@@ -543,7 +573,7 @@ export default function UnoGame() {
     } else {
       setFeedback({ message: "❌ UNO Challenge Failed!", type: "bad" })
     }
-    setTimeout(() => setFeedback(null), 2000)
+    setTimeout(() => setFeedback(null), 5000)
   }
 
   const challengeWildDrawFour = (targetPlayerId: string) => {
@@ -556,7 +586,7 @@ export default function UnoGame() {
       playSound("draw")
       setFeedback({ message: "❌ Wild Draw Four Challenge Failed! You draw 6 cards!", type: "bad" })
     }
-    setTimeout(() => setFeedback(null), 2000)
+    setTimeout(() => setFeedback(null), 5000)
   }
 
   useEffect(() => {
@@ -999,28 +1029,73 @@ export default function UnoGame() {
     const remainingCards = userCards.length - 1 // After playing this card
 
     if (remainingCards === 0) {
-      return { message: "🎉 PERFECT! You won the round!", type: "perfect" }
+      return { message: "🏆 PERFECT! You won the round! 🏆", type: "perfect" }
     }
 
     if (remainingCards === 1) {
-      return { message: "🔥 AMAZING! One card left - don't forget UNO!", type: "perfect" }
+      return { message: "🔥 AMAZING! One card left - don't forget UNO! 🔥", type: "perfect" }
     }
 
     if (cardPlayed.color === "wild") {
-      return { message: "🌟 GREAT PLAY! Wild card at the perfect time!", type: "great" }
+      const wildMessages = [
+        "🌟 PERFECT WILD! Masterful color choice!",
+        "🌈 WILD GENIUS! You control the game now!",
+        "✨ WILD MASTER! Perfect timing and strategy!",
+        "🎨 WILD ARTIST! Beautiful color selection!"
+      ]
+      return {
+        message: wildMessages[Math.floor(Math.random() * wildMessages.length)],
+        type: "perfect"
+      }
     }
 
-    if (cardPlayed.value === "Skip" || cardPlayed.value === "Draw Two") {
-      return { message: "💪 EXCELLENT! Action card disrupts opponents!", type: "great" }
+    if (cardPlayed.value === "Skip") {
+      const skipMessages = [
+        "⏭️ SKIP MASTER! Opponent's turn denied!",
+        "🚫 SKIP GENIUS! Perfect defensive play!",
+        "⚡ SKIP STRIKE! Lightning-fast strategy!"
+      ]
+      return {
+        message: skipMessages[Math.floor(Math.random() * skipMessages.length)],
+        type: "great"
+      }
+    }
+
+    if (cardPlayed.value === "Draw Two") {
+      const drawTwoMessages = [
+        "➕2 MASTER! Opponent draws the penalty!",
+        "🎯 DRAW TWO! Perfect offensive move!",
+        "💥 DOUBLE STRIKE! They're in trouble now!"
+      ]
+      return {
+        message: drawTwoMessages[Math.floor(Math.random() * drawTwoMessages.length)],
+        type: "great"
+      }
     }
 
     if (cardPlayed.value === "Reverse") {
-      return { message: "👍 NICE! Reverse can change the game flow!", type: "good" }
+      const reverseMessages = [
+        "🔄 REVERSE MASTER! Game flow changed!",
+        "↩️ REVERSE GENIUS! Perfect timing!",
+        "🎭 REVERSE DRAMA! The tables have turned!"
+      ]
+      return {
+        message: reverseMessages[Math.floor(Math.random() * reverseMessages.length)],
+        type: "great"
+      }
     }
 
     const playableCards = userCards.filter((card) => card.isPlayable)
     if (playableCards.length > 3) {
-      return { message: "🎯 GOOD CHOICE! Smart selection from many options!", type: "good" }
+      const smartMessages = [
+        "🎯 SMART CHOICE! Selected from many options!",
+        "🧠 STRATEGIC MOVE! Great decision making!",
+        "💡 BRILLIANT! Perfect card selection!"
+      ]
+      return {
+        message: smartMessages[Math.floor(Math.random() * smartMessages.length)],
+        type: "great"
+      }
     }
 
     const goodMessages = [
@@ -1028,6 +1103,10 @@ export default function UnoGame() {
       "👌 NICE PLAY! You're doing great!",
       "🎮 GOOD STRATEGY! Well played!",
       "⚡ SMOOTH! That works perfectly!",
+      "🎯 PRECISE! Excellent timing!",
+      "🔥 HOT STREAK! You're on fire!",
+      "💪 STRONG MOVE! Keep the momentum!",
+      "🌟 SHINING! Great gameplay!"
     ]
 
     return {
@@ -1214,19 +1293,33 @@ export default function UnoGame() {
       )}
 
       {feedback && (
-        <div className="absolute top-8 left-1/2 transform -translate-x-1/2 z-[9999] pointer-events-none">
-          <div
-            className={`
-            px-6 py-4 rounded-2xl shadow-2xl border-2 animate-bounce text-center font-bold text-lg font-gaming-secondary
-            ${feedback.type === "perfect" ? "bg-gradient-to-r from-yellow-400 to-orange-500 text-black border-yellow-300" : ""}
-            ${feedback.type === "great" ? "bg-gradient-to-r from-green-500 to-emerald-500 text-white border-green-300" : ""}
+        <div className="fixed top-24 left-1/2 transform -translate-x-1/2 z-[9999] pointer-events-none">
+          <div className={`
+            px-8 py-4 rounded-2xl shadow-2xl border-2 text-center font-bold text-xl
+            transform transition-all duration-500 ease-out
+            animate-[slideInDown_0.5s_ease-out,fadeOut_0.5s_ease-in_4s_forwards]
+            ${feedback.type === "perfect" ? "bg-gradient-to-r from-yellow-400 to-orange-500 text-black border-yellow-300 scale-110" : ""}
+            ${feedback.type === "great" ? "bg-gradient-to-r from-green-500 to-emerald-500 text-white border-green-300 scale-105" : ""}
             ${feedback.type === "good" ? "bg-gradient-to-r from-blue-500 to-cyan-500 text-white border-blue-300" : ""}
             ${feedback.type === "bad" ? "bg-gradient-to-r from-red-500 to-pink-500 text-white border-red-300" : ""}
-          `}
-          >
-            <p className="drop-shadow-lg">{feedback.message}</p>
+          `}>
+            <p className="drop-shadow-lg font-gaming-secondary">{feedback.message}</p>
+
+            {/* Particle effects for perfect moves */}
             {feedback.type === "perfect" && (
-              <div className="absolute inset-0 bg-yellow-400/30 rounded-2xl blur-xl animate-pulse"></div>
+              <div className="absolute inset-0 overflow-hidden rounded-2xl">
+                {[...Array(8)].map((_, i) => (
+                  <div
+                    key={i}
+                    className="absolute w-2 h-2 bg-white rounded-full animate-ping"
+                    style={{
+                      left: `${Math.random() * 100}%`,
+                      top: `${Math.random() * 100}%`,
+                      animationDelay: `${Math.random() * 2}s`
+                    }}
+                  />
+                ))}
+              </div>
             )}
           </div>
         </div>
@@ -1397,7 +1490,14 @@ export default function UnoGame() {
               transform: `translate(-50%, -50%) ${player.isActive ? "scale(1.1)" : "scale(1.0)"}`,
             }}
           >
-            <div className={`flex flex-col items-center gap-3 ${player.isActive ? "animate-pulse" : ""} pointer-events-auto`}>
+            <div className={`
+              flex flex-col items-center gap-3 transition-all duration-500 pointer-events-auto
+              ${player.isActive ? "scale-110" : "scale-100"}
+            `}>
+              {/* Active player spotlight */}
+              {player.isActive && (
+                <div className="absolute -inset-4 bg-gradient-to-r from-yellow-400/20 via-yellow-300/30 to-yellow-400/20 rounded-full blur-xl animate-pulse"></div>
+              )}
 
 
 
@@ -1429,66 +1529,63 @@ export default function UnoGame() {
                 </div>
               )}
 
-              <div
-                className={`relative transition-all duration-300 ${player.isActive
-                  ? "ring-4 ring-yellow-400 rounded-full shadow-2xl shadow-yellow-400/70 scale-110"
+              {/* Enhanced avatar with turn indicators */}
+              <div className={`
+                relative transition-all duration-500
+                ${player.isActive
+                  ? "ring-4 ring-yellow-400 shadow-2xl shadow-yellow-400/50"
                   : player.isNextPlayer
-                    ? "ring-2 ring-blue-400/60 rounded-full shadow-lg shadow-blue-400/40 scale-105"
-                    : ""
-                  }`}
-              >
-                <Avatar
-                  className={`border-2 border-white/30 shadow-lg transition-all duration-300 ${player.isActive
-                    ? "w-20 h-20"
-                    : player.isNextPlayer
-                      ? "w-18 h-18"
-                      : "w-16 h-16"
-                    }`}
-                >
+                    ? "ring-2 ring-blue-400/60 shadow-lg shadow-blue-400/30"
+                    : "ring-1 ring-white/20"
+                }
+                rounded-full
+              `}>
+                <Avatar className={`
+                  border-2 transition-all duration-500
+                  ${player.isActive ? "w-20 h-20 border-yellow-400" : "w-16 h-16 border-white/30"}
+                `}>
                   <AvatarImage src={player.avatar || "/placeholder.svg"} alt={player.name} />
-                  <AvatarFallback className="bg-gradient-to-br from-purple-600 to-blue-600 text-white font-bold text-sm">
+                  <AvatarFallback className="bg-gradient-to-br from-purple-600 to-blue-600 text-white font-bold">
                     {player.name[0]}
                   </AvatarFallback>
                 </Avatar>
+
+                {/* Active player indicator */}
                 {player.isActive && (
                   <>
-                    <div className="absolute -top-1 -right-1 w-3 h-3 bg-white/40 rounded-full animate-ping shadow-lg"></div>
-                    {/* Enhanced glow effect */}
-                    <div className="absolute inset-0 ring-4 ring-yellow-400/50 rounded-full animate-pulse"></div>
-                    <div className="absolute inset-0 ring-2 ring-yellow-300/30 rounded-full animate-ping"></div>
+                    <div className="absolute -top-2 -right-2 w-6 h-6 bg-yellow-400 rounded-full flex items-center justify-center animate-bounce">
+                      <div className="w-3 h-3 bg-yellow-600 rounded-full"></div>
+                    </div>
+                    <div className="absolute inset-0 ring-2 ring-yellow-300/50 rounded-full animate-ping"></div>
                   </>
                 )}
+
+                {/* Next player indicator */}
                 {player.isNextPlayer && !player.isActive && (
-                  <>
-                    <div className="absolute -top-1 -right-1 w-2 h-2 bg-blue-400/60 rounded-full animate-pulse shadow-md"></div>
-                    {/* Subtle glow effect for next player */}
-                    <div className="absolute inset-0 ring-2 ring-blue-400/30 rounded-full animate-pulse"></div>
-                  </>
+                  <div className="absolute -top-1 -right-1 w-4 h-4 bg-blue-400 rounded-full animate-pulse">
+                    <div className="w-2 h-2 bg-blue-600 rounded-full m-1"></div>
+                  </div>
                 )}
               </div>
 
+              {/* Enhanced player info */}
               <div className="text-center">
-                <p
-                  className={`font-semibold text-white drop-shadow-lg transition-all duration-300 ${player.isActive
-                    ? "text-base"
-                    : player.isNextPlayer
-                      ? "text-sm font-bold"
-                      : "text-sm"
-                    }`}
-                >
+                <p className={`
+                  font-semibold drop-shadow-lg transition-all duration-300 font-gaming-secondary
+                  ${player.isActive ? "text-yellow-300 text-lg" : "text-white text-sm"}
+                `}>
                   {player.name}
-                  {player.isNextPlayer && !player.isActive && (
-                    <span className="ml-1 text-blue-300 text-xs">→</span>
-                  )}
+                  {player.isActive && <span className="ml-2 text-yellow-200 crown-animation">👑</span>}
                 </p>
-                <p className={`text-white/80 transition-all duration-300 ${player.isActive
-                  ? "text-sm"
-                  : player.isNextPlayer
-                    ? "text-xs font-medium"
-                    : "text-xs"
-                  }`}>
+                <Badge className={`
+                  transition-all duration-300
+                  ${player.isActive
+                    ? "bg-yellow-400 text-black font-bold"
+                    : "bg-black/50 text-white/80"
+                  }
+                `}>
                   {player.cardCount} {player.cardCount === 1 ? 'card' : 'cards'}
-                </p>
+                </Badge>
                 {player.cardCount === 1 && !player.isActive && (
                   <div className="mt-1">
                     <Badge className="bg-red-500 text-white text-xs animate-pulse">
@@ -1597,6 +1694,69 @@ export default function UnoGame() {
         </div>
 
         <div className="relative flex flex-col items-center justify-end h-full pb-8">
+          {/* Current Player Indicator */}
+          {players[0] && (
+            <div className={`
+              flex flex-col items-center gap-3 mb-6 transition-all duration-500
+              ${players[0].isActive ? "scale-110" : "scale-100"}
+            `}>
+              {/* Active player spotlight */}
+              {players[0].isActive && (
+                <div className="absolute -inset-4 bg-gradient-to-r from-yellow-400/20 via-yellow-300/30 to-yellow-400/20 rounded-full blur-xl animate-pulse"></div>
+              )}
+
+              {/* Enhanced avatar with turn indicators */}
+              <div className={`
+                relative transition-all duration-500
+                ${players[0].isActive
+                  ? "ring-4 ring-yellow-400 shadow-2xl shadow-yellow-400/50"
+                  : "ring-1 ring-white/20"
+                }
+                rounded-full
+              `}>
+                <Avatar className={`
+                  border-2 transition-all duration-500
+                  ${players[0].isActive ? "w-20 h-20 border-yellow-400" : "w-16 h-16 border-white/30"}
+                `}>
+                  <AvatarImage src="/human-avatar.png" alt={players[0].name} />
+                  <AvatarFallback className="bg-gradient-to-br from-purple-600 to-blue-600 text-white font-bold">
+                    {players[0].name[0]}
+                  </AvatarFallback>
+                </Avatar>
+
+                {/* Active player indicator */}
+                {players[0].isActive && (
+                  <>
+                    <div className="absolute -top-2 -right-2 w-6 h-6 bg-yellow-400 rounded-full flex items-center justify-center animate-bounce">
+                      <div className="w-3 h-3 bg-yellow-600 rounded-full"></div>
+                    </div>
+                    <div className="absolute inset-0 ring-2 ring-yellow-300/50 rounded-full animate-ping"></div>
+                  </>
+                )}
+              </div>
+
+              {/* Enhanced player info */}
+              <div className="text-center">
+                <p className={`
+                  font-semibold drop-shadow-lg transition-all duration-300 font-gaming-secondary
+                  ${players[0].isActive ? "text-yellow-300 text-lg" : "text-white text-sm"}
+                `}>
+                  {players[0].name}
+                  {players[0].isActive && <span className="ml-2 text-yellow-200 crown-animation">👑</span>}
+                </p>
+                <Badge className={`
+                  transition-all duration-300
+                  ${players[0].isActive
+                    ? "bg-yellow-400 text-black font-bold"
+                    : "bg-black/50 text-white/80"
+                  }
+                `}>
+                  {players[0].cardCount} {players[0].cardCount === 1 ? 'card' : 'cards'}
+                </Badge>
+              </div>
+            </div>
+          )}
+
           {/* Player Hand - Positioned at the bottom of the curved board */}
           <div className="flex items-end gap-4 p-6 bg-black/20 backdrop-blur-sm rounded-2xl border border-white/20 shadow-xl mb-4">
             {(players[0]?.cards || []).map((card, index) => (
