@@ -1,22 +1,112 @@
 "use client"
 
 import { Ban, RotateCcw } from "lucide-react"
+import { memo, useMemo } from "react"
 
 interface UnoCardProps {
   color: "red" | "blue" | "green" | "yellow" | "wild"
   value: string | number
   size?: "small" | "medium" | "large"
   isPlayable?: boolean
+  isDisabled?: boolean
   onClick?: () => void
   className?: string
 }
 
-export function UnoCard({ color, value, size = "medium", isPlayable = false, onClick, className = "" }: UnoCardProps) {
-  const sizeClasses = {
-    small: "w-[35px] h-[50px]",    // Opponent cards: 35px × 50px
-    medium: "w-[80px] h-[120px]",  // Center pile cards: 80px × 120px
-    large: "w-[70px] h-[105px]",   // Player hand cards: 70px × 105px
+// CSS Custom Properties for colors
+const COLOR_VALUES = {
+  red: "var(--uno-red, #dc2626)",
+  blue: "var(--uno-blue, #2563eb)",
+  green: "var(--uno-green, #16a34a)",
+  yellow: "var(--uno-yellow, #ca8a04)",
+  wild: "var(--uno-wild, #000000)",
+} as const
+
+// Memoized animation classes
+const ANIMATION_CLASSES = {
+  playable: "uno-card-playable",
+  enhanced: "uno-card-enhanced",
+  hover: "hover:scale-105 hover:shadow-lg transition-all duration-200",
+  disabled: "opacity-50 cursor-not-allowed",
+  wildShadow: "shadow-lg shadow-black/30",
+} as const
+
+// Reusable corner indicator component
+const CornerIndicator = memo(({
+  value,
+  size,
+  color,
+  position = "top-left"
+}: {
+  value: string | number;
+  size: "small" | "medium" | "large";
+  color: string;
+  position?: "top-left" | "bottom-right"
+}) => {
+  const textSizes = {
+    small: "text-sm",
+    medium: "text-base",
+    large: "text-lg",
   }
+
+  const positionClasses = {
+    "top-left": "top-1 left-1",
+    "bottom-right": "bottom-1 right-1 transform rotate-180",
+  }
+
+  return (
+    <div className={`absolute ${positionClasses[position]} ${textSizes[size]} font-black text-white z-10`}>
+      {value}
+    </div>
+  )
+})
+
+CornerIndicator.displayName = "CornerIndicator"
+
+// Reusable icon corner indicator component
+const IconCornerIndicator = memo(({
+  icon: Icon,
+  size,
+  position = "top-left"
+}: {
+  icon: typeof Ban;
+  size: "small" | "medium" | "large";
+  position?: "top-left" | "bottom-right"
+}) => {
+  const iconSizes = {
+    small: "w-4 h-4",
+    medium: "w-6 h-6",
+    large: "w-8 h-8",
+  }
+
+  const positionClasses = {
+    "top-left": "top-1 left-1",
+    "bottom-right": "bottom-1 right-1 transform rotate-180",
+  }
+
+  return (
+    <div className={`absolute ${positionClasses[position]} text-white font-black z-10`}>
+      <Icon className={iconSizes[size]} />
+    </div>
+  )
+})
+
+IconCornerIndicator.displayName = "IconCornerIndicator"
+
+export function UnoCard({
+  color,
+  value,
+  size = "medium",
+  isPlayable = false,
+  isDisabled = false,
+  onClick,
+  className = ""
+}: UnoCardProps) {
+  const sizeClasses = useMemo(() => ({
+    small: "w-[35px] h-[50px]",
+    medium: "w-[80px] h-[120px]",
+    large: "w-[70px] h-[105px]",
+  }), [])
 
   const getCardComponent = () => {
     if (color === "wild") {
@@ -54,14 +144,48 @@ export function UnoCard({ color, value, size = "medium", isPlayable = false, onC
     }
   }
 
+  const handleKeyDown = (event: React.KeyboardEvent) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault()
+      if (onClick && !isDisabled) {
+        onClick()
+      }
+    }
+  }
+
+  const getAriaLabel = () => {
+    const colorName = color === "wild" ? "wild" : color
+    const valueName = typeof value === "number" ? value.toString() : value
+    const playableStatus = isPlayable ? "playable" : "not playable"
+    const disabledStatus = isDisabled ? "disabled" : ""
+    return `${colorName} ${valueName} card ${playableStatus} ${disabledStatus}`.trim()
+  }
+
+  const baseClasses = useMemo(() => [
+    sizeClasses[size],
+    getCardBg(),
+    "rounded-lg",
+    ANIMATION_CLASSES.enhanced,
+    isPlayable ? ANIMATION_CLASSES.playable : "",
+    !isDisabled ? ANIMATION_CLASSES.hover : "",
+    isDisabled ? ANIMATION_CLASSES.disabled : "",
+    color === "wild" ? ANIMATION_CLASSES.wildShadow : "",
+    className
+  ].filter(Boolean).join(" "), [sizeClasses, size, color, isPlayable, isDisabled, className])
+
   return (
     <div
-      className={`${sizeClasses[size]} ${getCardBg()} rounded-lg uno-card-enhanced ${isPlayable ? "uno-card-playable" : ""} ${className}`}
-      onClick={onClick}
+      className={baseClasses}
+      onClick={!isDisabled ? onClick : undefined}
+      onKeyDown={handleKeyDown}
+      role="button"
+      tabIndex={!isDisabled ? 0 : -1}
+      aria-label={getAriaLabel()}
+      aria-disabled={isDisabled}
     >
       {getCardComponent()}
       {/* Enhanced playable card indicator */}
-      {isPlayable && (
+      {isPlayable && !isDisabled && (
         <>
           <div className="absolute inset-0 bg-green-400/20 rounded-lg animate-pulse"></div>
           <div className="absolute inset-0 ring-2 ring-green-400/60 rounded-lg animate-ping"></div>
@@ -84,26 +208,22 @@ function NumberCard({ color, value, size }: { color: string; value: string | num
 
   return (
     <div className="relative w-full h-full p-1">
-      {/* White oval background */}
-      <div className="absolute inset-2 bg-white rounded-full opacity-90"></div>
+      {/* White oval background with reduced opacity */}
+      <div className="absolute inset-2 bg-white rounded-full opacity-80"></div>
 
       {/* Top left corner */}
-      <div className={`absolute top-1 left-1 ${textSizes[size].corner} font-black text-white z-10`}>{value}</div>
+      <CornerIndicator value={value} size={size} color={color} position="top-left" />
 
       {/* Center number */}
       <div
         className={`absolute inset-0 flex items-center justify-center ${textSizes[size].center} font-black z-20`}
-        style={{ color: color === "yellow" ? "#000" : getColorValue(color) }}
+        style={{ color: color === "yellow" ? "#000" : COLOR_VALUES[color as keyof typeof COLOR_VALUES] }}
       >
         {value}
       </div>
 
       {/* Bottom right corner (rotated) */}
-      <div
-        className={`absolute bottom-1 right-1 ${textSizes[size].corner} font-black text-white z-10 transform rotate-180`}
-      >
-        {value}
-      </div>
+      <CornerIndicator value={value} size={size} color={color} position="bottom-right" />
     </div>
   )
 }
@@ -117,24 +237,20 @@ function SkipCard({ color, size }: { color: string; size: "small" | "medium" | "
 
   return (
     <div className="relative w-full h-full p-1">
-      <div className="absolute inset-2 bg-white rounded-full opacity-90"></div>
+      <div className="absolute inset-2 bg-white rounded-full opacity-80"></div>
 
-      <div className="absolute top-1 left-1 text-white font-black z-10">
-        <Ban className={iconSizes[size]} />
-      </div>
+      <IconCornerIndicator icon={Ban} size={size} position="top-left" />
 
       <div className="absolute inset-0 flex items-center justify-center z-20">
         <div
           className={`rounded-full border-4 ${iconSizes[size === "small" ? "medium" : "large"]} flex items-center justify-center`}
-          style={{ borderColor: getColorValue(color), color: getColorValue(color) }}
+          style={{ borderColor: COLOR_VALUES[color as keyof typeof COLOR_VALUES], color: COLOR_VALUES[color as keyof typeof COLOR_VALUES] }}
         >
           <Ban className={iconSizes[size]} />
         </div>
       </div>
 
-      <div className="absolute bottom-1 right-1 text-white font-black z-10 transform rotate-180">
-        <Ban className={iconSizes[size]} />
-      </div>
+      <IconCornerIndicator icon={Ban} size={size} position="bottom-right" />
     </div>
   )
 }
@@ -148,14 +264,12 @@ function ReverseCard({ color, size }: { color: string; size: "small" | "medium" 
 
   return (
     <div className="relative w-full h-full p-1">
-      <div className="absolute inset-2 bg-white rounded-full opacity-90"></div>
+      <div className="absolute inset-2 bg-white rounded-full opacity-80"></div>
 
-      <div className="absolute top-1 left-1 text-white font-black z-10">
-        <RotateCcw className={iconSizes[size]} />
-      </div>
+      <IconCornerIndicator icon={RotateCcw} size={size} position="top-left" />
 
       <div className="absolute inset-0 flex items-center justify-center z-20">
-        <div className="relative" style={{ color: getColorValue(color) }}>
+        <div className="relative" style={{ color: COLOR_VALUES[color as keyof typeof COLOR_VALUES] }}>
           <RotateCcw className={iconSizes[size === "small" ? "medium" : "large"]} />
           <RotateCcw
             className={`${iconSizes[size === "small" ? "medium" : "large"]} absolute top-0 left-0 transform rotate-180`}
@@ -163,9 +277,7 @@ function ReverseCard({ color, size }: { color: string; size: "small" | "medium" 
         </div>
       </div>
 
-      <div className="absolute bottom-1 right-1 text-white font-black z-10 transform rotate-180">
-        <RotateCcw className={iconSizes[size]} />
-      </div>
+      <IconCornerIndicator icon={RotateCcw} size={size} position="bottom-right" />
     </div>
   )
 }
@@ -179,12 +291,12 @@ function DrawTwoCard({ color, size }: { color: string; size: "small" | "medium" 
 
   return (
     <div className="relative w-full h-full p-1">
-      <div className="absolute inset-2 bg-white rounded-full opacity-90"></div>
+      <div className="absolute inset-2 bg-white rounded-full opacity-80"></div>
 
-      <div className={`absolute top-1 left-1 ${textSizes[size].corner} font-black text-white z-10`}>+2</div>
+      <CornerIndicator value="+2" size={size} color={color} position="top-left" />
 
       <div className="absolute inset-0 flex items-center justify-center z-20">
-        <div className="relative" style={{ color: getColorValue(color) }}>
+        <div className="relative" style={{ color: COLOR_VALUES[color as keyof typeof COLOR_VALUES] }}>
           {/* Overlapping card symbols */}
           <div className={`${textSizes[size].center} font-black flex items-center gap-1`}>
             <div className="w-4 h-6 bg-current rounded-sm opacity-80"></div>
@@ -194,11 +306,7 @@ function DrawTwoCard({ color, size }: { color: string; size: "small" | "medium" 
         </div>
       </div>
 
-      <div
-        className={`absolute bottom-1 right-1 ${textSizes[size].corner} font-black text-white z-10 transform rotate-180`}
-      >
-        +2
-      </div>
+      <CornerIndicator value="+2" size={size} color={color} position="bottom-right" />
     </div>
   )
 }
@@ -206,7 +314,7 @@ function DrawTwoCard({ color, size }: { color: string; size: "small" | "medium" 
 function WildCard({ size }: { size: "small" | "medium" | "large" }) {
   return (
     <div className="relative w-full h-full p-1">
-      <div className="absolute inset-2 bg-white rounded-full opacity-90"></div>
+      <div className="absolute inset-2 bg-white rounded-full opacity-80"></div>
 
       <div className="absolute top-1 left-1 text-white font-black z-10">
         <div className="w-3 h-2 bg-gradient-to-r from-red-500 via-yellow-500 via-green-500 to-blue-500 rounded-full"></div>
@@ -240,9 +348,9 @@ function WildDrawFourCard({ size }: { size: "small" | "medium" | "large" }) {
 
   return (
     <div className="relative w-full h-full p-1">
-      <div className="absolute inset-2 bg-white rounded-full opacity-90"></div>
+      <div className="absolute inset-2 bg-white rounded-full opacity-80"></div>
 
-      <div className={`absolute top-1 left-1 ${textSizes[size].corner} font-black text-white z-10`}>+4</div>
+      <CornerIndicator value="+4" size={size} color="black" position="top-left" />
 
       <div className="absolute inset-0 flex items-center justify-center z-20">
         <div className="relative flex flex-col items-center">
@@ -259,26 +367,12 @@ function WildDrawFourCard({ size }: { size: "small" | "medium" | "large" }) {
         </div>
       </div>
 
-      <div
-        className={`absolute bottom-1 right-1 ${textSizes[size].corner} font-black text-white z-10 transform rotate-180`}
-      >
-        +4
-      </div>
+      <CornerIndicator value="+4" size={size} color="black" position="bottom-right" />
     </div>
   )
 }
 
+// Updated getColorValue function using CSS custom properties
 function getColorValue(color: string): string {
-  switch (color) {
-    case "red":
-      return "#dc2626"
-    case "blue":
-      return "#2563eb"
-    case "green":
-      return "#16a34a"
-    case "yellow":
-      return "#ca8a04"
-    default:
-      return "#000000"
-  }
+  return COLOR_VALUES[color as keyof typeof COLOR_VALUES] || COLOR_VALUES.wild
 }
