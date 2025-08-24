@@ -1049,40 +1049,20 @@ export default function UnoGame() {
 
   return (
     <div className="min-h-screen relative overflow-hidden">
-      <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-purple-900 to-slate-800"></div>
+      {/* New warm casino background */}
+      <div className="absolute inset-0 bg-gradient-to-br from-slate-800 via-red-900 to-green-900"></div>
 
-      <div className="absolute inset-0 opacity-20">
-        <div className="absolute top-10 left-10 w-32 h-32 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full blur-2xl animate-pulse"></div>
-        <div className="absolute top-32 right-20 w-24 h-24 bg-gradient-to-r from-pink-500 to-red-500 rounded-full blur-xl animate-bounce"></div>
-        <div className="absolute bottom-20 left-1/4 w-40 h-40 bg-gradient-to-r from-green-500 to-blue-500 rounded-full blur-3xl animate-pulse"></div>
-        <div className="absolute bottom-32 right-1/3 w-28 h-28 bg-gradient-to-r from-yellow-500 to-orange-500 rounded-full blur-xl animate-bounce"></div>
-
-        {/* Additional animated background elements */}
-        <div className="absolute top-1/2 left-1/4 w-16 h-16 bg-gradient-to-r from-cyan-400 to-blue-500 rounded-full blur-lg animate-pulse" style={{ animationDelay: '1s' }}></div>
-        <div className="absolute top-1/3 right-1/3 w-20 h-20 bg-gradient-to-r from-purple-400 to-pink-500 rounded-full blur-xl animate-bounce" style={{ animationDelay: '2s' }}></div>
-        <div className="absolute bottom-1/3 left-1/3 w-12 h-12 bg-gradient-to-r from-green-400 to-emerald-500 rounded-full blur-md animate-pulse" style={{ animationDelay: '0.5s' }}></div>
-
-        {/* Floating particles */}
-        <div className="absolute top-1/4 left-1/2 w-2 h-2 bg-white/30 rounded-full animate-ping" style={{ animationDelay: '0s' }}></div>
-        <div className="absolute top-3/4 right-1/4 w-1 h-1 bg-white/40 rounded-full animate-ping" style={{ animationDelay: '1.5s' }}></div>
-        <div className="absolute top-1/2 left-1/6 w-1.5 h-1.5 bg-white/35 rounded-full animate-ping" style={{ animationDelay: '3s' }}></div>
-        <div className="absolute top-2/3 right-1/6 w-1 h-1 bg-white/25 rounded-full animate-ping" style={{ animationDelay: '2.5s' }}></div>
+      {/* Casino table surface */}
+      <div className="absolute inset-0">
+        <div className="absolute bottom-0 left-0 right-0 h-[60vh] bg-gradient-to-t from-green-800/90 via-green-700/70 to-transparent"></div>
+        <div className="absolute top-1/4 left-1/4 right-1/4 bottom-1/4 bg-green-800/20 rounded-full blur-3xl"></div>
       </div>
 
-      <div className="absolute inset-0 opacity-10">
-        <div className="absolute top-1/4 left-1/4 w-2 h-2 bg-white rotate-45 animate-ping"></div>
-        <div
-          className="absolute top-3/4 right-1/4 w-2 h-2 bg-white rotate-45 animate-ping"
-          style={{ animationDelay: "1s" }}
-        ></div>
-        <div
-          className="absolute top-1/2 left-1/6 w-2 h-2 bg-white rotate-45 animate-ping"
-          style={{ animationDelay: "2s" }}
-        ></div>
-        <div
-          className="absolute top-1/3 right-1/6 w-2 h-2 bg-white rotate-45 animate-ping"
-          style={{ animationDelay: "0.5s" }}
-        ></div>
+      {/* Enhanced lighting effects */}
+      <div className="absolute inset-0 opacity-30">
+        <div className="absolute top-20 left-20 w-40 h-40 bg-gradient-to-r from-yellow-500 to-orange-500 rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute top-40 right-32 w-32 h-32 bg-gradient-to-r from-red-500 to-pink-500 rounded-full blur-2xl animate-bounce"></div>
+        <div className="absolute bottom-40 left-1/3 w-48 h-48 bg-gradient-to-r from-blue-500 to-cyan-500 rounded-full blur-4xl animate-pulse" style={{ animationDelay: '1s' }}></div>
       </div>
 
       {animatedCards.map((animatedCard) => {
@@ -1144,7 +1124,7 @@ export default function UnoGame() {
                 color={animatedCard.card.color}
                 value={animatedCard.card.value}
                 size="medium"
-                className={getGlowEffect()}
+                className={`uno-card-enhanced ${getGlowEffect()}`}
               />
 
               {/* Enhanced glow effects based on animation type */}
@@ -1208,7 +1188,7 @@ export default function UnoGame() {
                 color={showActionConfirm.card.color}
                 value={showActionConfirm.card.value}
                 size="medium"
-                className="mx-auto"
+                className="uno-card-enhanced mx-auto"
               />
             </div>
             <p className="text-sm mb-6 opacity-90">
@@ -1437,7 +1417,7 @@ export default function UnoGame() {
                         color="red"
                         value="1"
                         size="small"
-                        className="shadow-lg"
+                        className="uno-card-enhanced shadow-lg"
                       />
                     </div>
                   ))}
@@ -1655,10 +1635,7 @@ export default function UnoGame() {
                   value={card.value}
                   size="large"
                   isPlayable={card.isPlayable && players[0]?.isActive && !playDelay}
-                  className={`shadow-xl transition-all duration-300 ${card.isPlayable && players[0]?.isActive && !playDelay
-                    ? "hover:shadow-2xl hover:shadow-yellow-400/50 hover:border-yellow-400/80"
-                    : ""
-                    }`}
+                  className={`uno-card-enhanced ${card.isPlayable && players[0]?.isActive && !playDelay ? "uno-card-playable" : ""}`}
                 />
               </div>
             ))}
@@ -1804,7 +1781,7 @@ export default function UnoGame() {
                 color={card.color}
                 value={card.value}
                 size="small"
-                className="shadow-md"
+                className="uno-card-enhanced shadow-md"
               />
             ))}
           </div>

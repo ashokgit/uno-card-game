@@ -56,10 +56,7 @@ export function UnoCard({ color, value, size = "medium", isPlayable = false, onC
 
   return (
     <div
-      className={`${sizeClasses[size]} ${getCardBg()} rounded-lg border-2 shadow-lg cursor-pointer transition-all duration-300 transform ${isPlayable
-          ? "border-green-400 hover:scale-105 hover:-translate-y-2 hover:shadow-2xl hover:shadow-green-400/50 animate-pulse playable-pulse"
-          : "border-gray-300 hover:scale-105 hover:shadow-2xl"
-        } ${className}`}
+      className={`${sizeClasses[size]} ${getCardBg()} rounded-lg uno-card-enhanced ${isPlayable ? "uno-card-playable" : ""} ${className}`}
       onClick={onClick}
     >
       {getCardComponent()}
