@@ -775,3 +775,178 @@
     0 0 15px rgba(59, 130, 246, 0.4),
     0 0 30px rgba(59, 130, 246, 0.2);
 }
+
+/* Ambient casino animations */
+@keyframes floatingChips {
+  0%, 100% { 
+    transform: translateY(0px) rotate(0deg); 
+    opacity: 0.1; 
+  }
+  50% { 
+    transform: translateY(-20px) rotate(180deg); 
+    opacity: 0.3; 
+  }
+}
+
+@keyframes tableShimmer {
+  0%, 100% { 
+    background-position: -100% 0; 
+  }
+  50% { 
+    background-position: 100% 0; 
+  }
+}
+
+@keyframes casinoGlow {
+  0%, 100% { 
+    opacity: 0.3;
+    transform: scale(1);
+  }
+  50% { 
+    opacity: 0.6;
+    transform: scale(1.05);
+  }
+}
+
+.casino-ambiance {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 215, 0, 0.03) 25%,
+    rgba(255, 215, 0, 0.05) 50%,
+    rgba(255, 215, 0, 0.03) 75%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: tableShimmer 8s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.floating-casino-elements {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.floating-casino-elements::before {
+  content: '♠ ♥ ♦ ♣';
+  position: absolute;
+  top: 10%;
+  left: 10%;
+  font-size: 2rem;
+  color: rgba(255, 255, 255, 0.1);
+  animation: floatingChips 12s ease-in-out infinite;
+}
+
+.floating-casino-elements::after {
+  content: '🎰 🎲 🃏';
+  position: absolute;
+  bottom: 10%;
+  right: 10%;
+  font-size: 1.5rem;
+  color: rgba(255, 255, 255, 0.1);
+  animation: floatingChips 15s ease-in-out infinite reverse;
+}
+
+/* Enhanced card physics animations */
+@keyframes cardPhysics {
+  0% {
+    transform: translateY(0) rotate(0deg) scale(1);
+  }
+  25% {
+    transform: translateY(-15px) rotate(2deg) scale(1.02);
+  }
+  50% {
+    transform: translateY(-25px) rotate(-1deg) scale(1.05);
+  }
+  75% {
+    transform: translateY(-15px) rotate(1deg) scale(1.02);
+  }
+  100% {
+    transform: translateY(0) rotate(0deg) scale(1);
+  }
+}
+
+.card-physics-enhanced {
+  animation: cardPhysics 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+/* Enhanced particle effects */
+@keyframes particleFloat {
+  0% {
+    transform: translateY(0) translateX(0) scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: translateY(-30px) translateX(var(--particle-x, 10px)) scale(1.2);
+    opacity: 0.8;
+  }
+  100% {
+    transform: translateY(-60px) translateX(var(--particle-x2, 20px)) scale(0);
+    opacity: 0;
+  }
+}
+
+.particle-float {
+  animation: particleFloat 2s ease-out forwards;
+}
+
+/* Enhanced glow effects for cards */
+.card-glow-enhanced {
+  filter: drop-shadow(0 0 15px rgba(255, 215, 0, 0.4))
+          drop-shadow(0 0 30px rgba(255, 165, 0, 0.2));
+  transition: filter 0.3s ease;
+}
+
+.card-glow-enhanced:hover {
+  filter: drop-shadow(0 0 20px rgba(255, 215, 0, 0.6))
+          drop-shadow(0 0 40px rgba(255, 165, 0, 0.4))
+          drop-shadow(0 0 60px rgba(255, 215, 0, 0.2));
+}
+
+/* Enhanced table surface effects */
+.table-surface-enhanced {
+  background: 
+    radial-gradient(circle at 20% 20%, rgba(255, 215, 0, 0.1) 0%, transparent 50%),
+    radial-gradient(circle at 80% 80%, rgba(255, 165, 0, 0.1) 0%, transparent 50%),
+    radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.05) 0%, transparent 70%);
+  animation: casinoGlow 4s ease-in-out infinite;
+}
+
+/* Enhanced lighting effects */
+.lighting-effect {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(40px);
+  opacity: 0.3;
+  animation: casinoGlow 6s ease-in-out infinite;
+}
+
+.lighting-effect:nth-child(1) {
+  background: radial-gradient(circle, rgba(255, 215, 0, 0.4) 0%, transparent 70%);
+  width: 200px;
+  height: 200px;
+  top: 10%;
+  left: 10%;
+  animation-delay: 0s;
+}
+
+.lighting-effect:nth-child(2) {
+  background: radial-gradient(circle, rgba(255, 165, 0, 0.3) 0%, transparent 70%);
+  width: 150px;
+  height: 150px;
+  top: 20%;
+  right: 15%;
+  animation-delay: 2s;
+}
+
+.lighting-effect:nth-child(3) {
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.2) 0%, transparent 70%);
+  width: 180px;
+  height: 180px;
+  bottom: 20%;
+  left: 20%;
+  animation-delay: 4s;
+}

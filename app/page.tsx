@@ -59,6 +59,14 @@ interface AnimatedCard {
   duration: number
   delay: number
   startTime: number
+  // Enhanced physics properties
+  velocity: { x: number; y: number }
+  gravity: number
+  bounce: number
+  spin: number
+  airResistance: number
+  maxBounces: number
+  bounceCount: number
 }
 
 export default function UnoGame() {
@@ -162,7 +170,15 @@ export default function UnoGame() {
       trajectory: 'straight',
       duration: 1200,
       delay: 0,
-      startTime: 0
+      startTime: 0,
+      // Enhanced physics properties
+      velocity: { x: 0, y: 0 },
+      gravity: 0.5,
+      bounce: 0.7,
+      spin: 0,
+      airResistance: 0.98,
+      maxBounces: 2,
+      bounceCount: 0
     }
 
     setNextAnimationId(prev => prev + 1)
@@ -328,6 +344,9 @@ export default function UnoGame() {
     const centerElement = document.querySelector("[data-center-pile]")
     const playedCardElement = document.querySelector(`[data-card-id="${cardToPlay.id}"]`)
 
+    // Define userThrowDuration at the function level so it's available everywhere
+    const userThrowDuration = Math.random() * 300 + 700 // 700ms to 1000ms for user throws - reduced from 1000-1400ms
+
     if (userHandElement && centerElement) {
       const userHandRect = userHandElement.getBoundingClientRect()
       const centerRect = centerElement.getBoundingClientRect()
@@ -345,8 +364,39 @@ export default function UnoGame() {
       if (animatedCards.filter(card => card.isAnimating).length >= 3) {
         // Skip animation if too many are running
         console.log("Animation limit reached, skipping card throw animation")
+        // Still use the randomized timing even when skipping animation
+        const userGameUpdateDelay = userThrowDuration + Math.random() * 200 + 200
+        setTimeout(() => {
+          let chosenColor: "red" | "blue" | "green" | "yellow" | undefined
+          if (cardToPlay.color === "wild") {
+            const colors: ("red" | "blue" | "green" | "yellow")[] = ["red", "blue", "green", "yellow"]
+            chosenColor = colors[Math.floor(Math.random() * colors.length)]
+          }
+
+          const success = gameEngine.playCard("player_0", cardToPlay.id.toString(), chosenColor)
+          console.log("[v0] User card play result:", success, "New current player:", gameEngine.getCurrentPlayer().name)
+
+          if (success) {
+            const gameData = convertToUIFormat()
+            setPlayers(gameData.players)
+            setCurrentCard(gameData.currentCard)
+            setDirection(gameData.direction)
+            setCurrentPlayerId(gameEngine.getCurrentPlayer().id)
+
+            if (gameEngine.isGameOver()) {
+              const winner = gameEngine.getRoundWinner()
+              if (winner) {
+                playSound("win")
+              }
+            }
+          }
+
+          setIsAnimating(false)
+          setPlayDelay(false)
+        }, userGameUpdateDelay)
+        return
       } else {
-        // Create realistic throwing animation using object pooling
+        // Create enhanced physics-based throwing animation using object pooling
         const animatedCard = getAnimationFromPool()
         animatedCard.card = cardToPlay
         animatedCard.startX = startX
@@ -361,9 +411,17 @@ export default function UnoGame() {
         animatedCard.scale = 1.2
         animatedCard.zIndex = 10000
         animatedCard.trajectory = 'arc' // Use arc trajectory for throwing effect
-        animatedCard.duration = 1200 // Reduced from 2000ms to 1200ms
+        animatedCard.duration = userThrowDuration
         animatedCard.delay = animatedCards.filter(card => card.isAnimating).length * 150 // Stagger delay of 150ms
         animatedCard.startTime = Date.now() + animatedCard.delay
+        // Enhanced physics properties for user throw
+        animatedCard.velocity = { x: 0, y: 0 }
+        animatedCard.gravity = 0.5
+        animatedCard.bounce = 0.7
+        animatedCard.spin = (Math.random() - 0.5) * 5 // Reduced from 20 to 5 for more subtle rotation
+        animatedCard.airResistance = 0.98
+        animatedCard.maxBounces = 2
+        animatedCard.bounceCount = 0
 
         setAnimatedCards((prev) => [...prev, animatedCard])
       }
@@ -375,7 +433,8 @@ export default function UnoGame() {
       // Cards will be removed automatically when animation completes
     }
 
-    // Delay game state update until animation completes
+    // Delay game state update until animation completes with randomized timing
+    const userGameUpdateDelay = userThrowDuration + Math.random() * 200 + 200 // Add 200-400ms buffer
     setTimeout(() => {
       let chosenColor: "red" | "blue" | "green" | "yellow" | undefined
       if (cardToPlay.color === "wild") {
@@ -403,7 +462,7 @@ export default function UnoGame() {
 
       setIsAnimating(false)
       setPlayDelay(false)
-    }, 1400) // Slightly longer than animation duration (1200ms + 200ms buffer)
+    }, userGameUpdateDelay)
   }
 
   // Add particle effect function
@@ -475,6 +534,9 @@ export default function UnoGame() {
     const deckElement = document.querySelector("[data-deck]")
     const userHandElement = document.querySelector("[data-user-hand]")
 
+    // Define userDrawDuration at the function level so it's available everywhere
+    const userDrawDuration = Math.random() * 200 + 600 // 600ms to 800ms for user draws - reduced from 1000-1300ms
+
     if (deckElement && userHandElement) {
       const deckRect = deckElement.getBoundingClientRect()
       const handRect = userHandElement.getBoundingClientRect()
@@ -483,8 +545,39 @@ export default function UnoGame() {
       if (animatedCards.filter(card => card.isAnimating).length >= 3) {
         // Skip animation if too many are running
         console.log("Animation limit reached, skipping draw animation")
+        // Still use the randomized timing even when skipping animation
+        const userDrawUpdateDelay = userDrawDuration + Math.random() * 200 + 200
+        setTimeout(() => {
+          const drawnCard = gameEngine.drawCard("player_0")
+          console.log("[v0] User draw result, New current player:", gameEngine.getCurrentPlayer().name)
+
+          // Enhanced draw card feedback
+          if (drawnCard) {
+            const drawMessages = [
+              "🎴 Card drawn! Let's see what you got!",
+              "📚 New card in hand! Time to strategize!",
+              "🃏 Fresh card! Make it count!",
+              "✨ New addition to your arsenal!",
+              "🎯 Card acquired! Plan your next move!"
+            ]
+            setFeedback({
+              message: drawMessages[Math.floor(Math.random() * drawMessages.length)],
+              type: "good"
+            })
+            setTimeout(() => setFeedback(null), 5000)
+          }
+
+          const gameData = convertToUIFormat()
+          setPlayers(gameData.players)
+          setCurrentCard(gameData.currentCard)
+          setDirection(gameData.direction)
+          setCurrentPlayerId(gameEngine.getCurrentPlayer().id)
+
+          setPlayDelay(false)
+        }, userDrawUpdateDelay)
+        return
       } else {
-        // Create drawing animation using object pooling
+        // Create drawing animation using object pooling with randomized duration
         const animatedCard = getAnimationFromPool()
         animatedCard.card = { id: Math.random(), color: "red", value: "?", isPlayable: false }
         animatedCard.startX = deckRect.left + deckRect.width / 2
@@ -499,9 +592,17 @@ export default function UnoGame() {
         animatedCard.scale = 1
         animatedCard.zIndex = 9999
         animatedCard.trajectory = 'straight'
-        animatedCard.duration = 1200 // Reduced from 1500ms to 1200ms
+        animatedCard.duration = userDrawDuration
         animatedCard.delay = animatedCards.filter(card => card.isAnimating).length * 150 // Stagger delay of 150ms
         animatedCard.startTime = Date.now() + animatedCard.delay
+        // Enhanced physics properties for draw animation
+        animatedCard.velocity = { x: 0, y: 0 }
+        animatedCard.gravity = 0.3
+        animatedCard.bounce = 0.5
+        animatedCard.spin = Math.random() * 10 - 5
+        animatedCard.airResistance = 0.99
+        animatedCard.maxBounces = 1
+        animatedCard.bounceCount = 0
 
         setAnimatedCards((prev) => [...prev, animatedCard])
       }
@@ -513,7 +614,8 @@ export default function UnoGame() {
       // Cards will be removed automatically when animation completes
     }
 
-    // Delay game state update until animation completes
+    // Delay game state update until animation completes with randomized timing
+    const userDrawUpdateDelay = userDrawDuration + Math.random() * 200 + 200 // Add 200-400ms buffer
     setTimeout(() => {
       const drawnCard = gameEngine.drawCard("player_0")
       console.log("[v0] User draw result, New current player:", gameEngine.getCurrentPlayer().name)
@@ -541,7 +643,7 @@ export default function UnoGame() {
       setCurrentPlayerId(gameEngine.getCurrentPlayer().id)
 
       setPlayDelay(false)
-    }, 1400) // Slightly longer than animation duration (1200ms + 200ms buffer)
+    }, userDrawUpdateDelay)
   }
 
   const callUno = () => {
@@ -615,99 +717,192 @@ export default function UnoGame() {
 
     setIsAITurnAnimating(true)
 
-    // First, determine what the AI will do
-    const topCard = gameEngine.getTopCard()
-    let cardToPlay: GameCard | null = null
-    let chosenWildColor: string | undefined = undefined
-    let shouldDraw = false
+    // Randomize AI thinking time (0.8 to 2.5 seconds) - reduced from 1.5-4s
+    const thinkingTime = Math.random() * 1700 + 800
+    console.log(`AI ${currentPlayer.name} thinking for ${thinkingTime.toFixed(0)}ms`)
 
-    if (topCard) {
-      // Convert topCard to GameCard format for comparison
-      const topGameCard: GameCard = {
-        id: Number.parseInt(topCard.id),
-        color: topCard.color,
-        value: topCard.value,
-        isPlayable: false
-      }
+    // Execute AI turn after thinking time
+    setTimeout(() => {
+      // First, determine what the AI will do
+      const topCard = gameEngine.getTopCard()
+      let cardToPlay: GameCard | null = null
+      let chosenWildColor: string | undefined = undefined
+      let shouldDraw = false
 
-      // Find a playable card in AI's hand
-      const aiHand = currentPlayer.getHand()
-      for (const card of aiHand) {
-        const gameCard: GameCard = {
-          id: Number.parseInt(card.id),
-          color: card.color,
-          value: card.value,
+      if (topCard) {
+        // Convert topCard to GameCard format for comparison
+        const topGameCard: GameCard = {
+          id: Number.parseInt(topCard.id),
+          color: topCard.color,
+          value: topCard.value,
           isPlayable: false
         }
 
-        if (canPlayCard(gameCard, topGameCard)) {
-          cardToPlay = gameCard
-          if (card.isWildCard()) {
-            // AI chooses color based on most cards in hand
-            const colorCounts = { red: 0, blue: 0, green: 0, yellow: 0 }
-            aiHand.forEach(c => {
-              if (c.color !== "wild") {
-                colorCounts[c.color as keyof typeof colorCounts]++
-              }
-            })
-            const maxColor = Object.entries(colorCounts).reduce((a, b) =>
-              colorCounts[a[0] as keyof typeof colorCounts] > colorCounts[b[0] as keyof typeof colorCounts] ? a : b
-            )[0]
-            chosenWildColor = maxColor
+        // Find a playable card in AI's hand
+        const aiHand = currentPlayer.getHand()
+        for (const card of aiHand) {
+          const gameCard: GameCard = {
+            id: Number.parseInt(card.id),
+            color: card.color,
+            value: card.value,
+            isPlayable: false
           }
-          break
+
+          if (canPlayCard(gameCard, topGameCard)) {
+            cardToPlay = gameCard
+            if (card.isWildCard()) {
+              // AI chooses color based on most cards in hand
+              const colorCounts = { red: 0, blue: 0, green: 0, yellow: 0 }
+              aiHand.forEach(c => {
+                if (c.color !== "wild") {
+                  colorCounts[c.color as keyof typeof colorCounts]++
+                }
+              })
+              const maxColor = Object.entries(colorCounts).reduce((a, b) =>
+                colorCounts[a[0] as keyof typeof colorCounts] > colorCounts[b[0] as keyof typeof colorCounts] ? a : b
+              )[0]
+              chosenWildColor = maxColor
+            }
+            break
+          }
+        }
+
+        // If no playable card found, AI should draw
+        if (!cardToPlay) {
+          shouldDraw = true
         }
       }
 
-      // If no playable card found, AI should draw
-      if (!cardToPlay) {
-        shouldDraw = true
+      const currentPlayerIndex = gameEngine.getPlayers().findIndex((p) => p.id === currentPlayer.id)
+      const aiPlayerElement = document.querySelector(`[data-player="${currentPlayerIndex}"]`)
+      const centerElement = document.querySelector("[data-center-pile]")
+      const deckElement = document.querySelector("[data-deck]")
+
+      // Randomize animation durations for more natural feel
+      const getRandomAnimationDuration = (baseDuration: number, variance: number = 0.3) => {
+        const minDuration = baseDuration * (1 - variance)
+        const maxDuration = baseDuration * (1 + variance)
+        return Math.random() * (maxDuration - minDuration) + minDuration
       }
-    }
 
-    const currentPlayerIndex = gameEngine.getPlayers().findIndex((p) => p.id === currentPlayer.id)
-    const aiPlayerElement = document.querySelector(`[data-player="${currentPlayerIndex}"]`)
-    const centerElement = document.querySelector("[data-center-pile]")
-    const deckElement = document.querySelector("[data-deck]")
+      if (aiPlayerElement && centerElement) {
+        if (shouldDraw && deckElement) {
+          // AI needs to draw a card
+          console.log("AI drawing card")
+          playSound("draw")
 
-    if (aiPlayerElement && centerElement) {
-      if (shouldDraw && deckElement) {
-        // AI needs to draw a card
-        console.log("AI drawing card")
-        playSound("draw")
+          const aiPlayerRect = aiPlayerElement.getBoundingClientRect()
+          const deckRect = deckElement.getBoundingClientRect()
 
-        const aiPlayerRect = aiPlayerElement.getBoundingClientRect()
-        const deckRect = deckElement.getBoundingClientRect()
+          // Create drawing animation with randomized duration
+          const drawDuration = getRandomAnimationDuration(800, 0.4) // 480ms to 1120ms - reduced from 1500ms
+          const animatedCard: AnimatedCard = {
+            id: Date.now() + currentPlayerIndex,
+            card: { id: Math.random(), color: "red", value: "?", isPlayable: false },
+            startX: deckRect.left + deckRect.width / 2,
+            startY: deckRect.top + deckRect.height / 2,
+            endX: aiPlayerRect.left + aiPlayerRect.width / 2,
+            endY: aiPlayerRect.top + aiPlayerRect.height / 2,
+            currentX: deckRect.left + deckRect.width / 2,
+            currentY: deckRect.top + deckRect.height / 2,
+            isAnimating: true,
+            type: 'draw',
+            rotation: 0,
+            scale: 1,
+            zIndex: 9999,
+            trajectory: 'straight',
+            duration: drawDuration,
+            delay: 0,
+            startTime: Date.now(),
+            // Enhanced physics properties for AI draw
+            velocity: { x: 0, y: 0 },
+            gravity: 0.2,
+            bounce: 0.4,
+            spin: Math.random() * 8 - 4,
+            airResistance: 0.99,
+            maxBounces: 1,
+            bounceCount: 0
+          }
 
-        // Create drawing animation
-        const animatedCard: AnimatedCard = {
-          id: Date.now() + currentPlayerIndex,
-          card: { id: Math.random(), color: "red", value: "?", isPlayable: false },
-          startX: deckRect.left + deckRect.width / 2,
-          startY: deckRect.top + deckRect.height / 2,
-          endX: aiPlayerRect.left + aiPlayerRect.width / 2,
-          endY: aiPlayerRect.top + aiPlayerRect.height / 2,
-          currentX: deckRect.left + deckRect.width / 2,
-          currentY: deckRect.top + deckRect.height / 2,
-          isAnimating: true,
-          type: 'draw',
-          rotation: 0,
-          scale: 1,
-          zIndex: 9999,
-          trajectory: 'straight',
-          duration: 1500,
-          delay: 0,
-          startTime: Date.now(),
-        }
+          setAnimatedCards((prev) => [...prev, animatedCard])
+          playSound("card-flip")
 
-        setAnimatedCards((prev) => [...prev, animatedCard])
-        playSound("card-flip")
+          // Execute AI draw after animation with randomized delay
+          const drawDelay = drawDuration + Math.random() * 200 + 100 // Add 100-300ms buffer
+          setTimeout(() => {
+            // For AI drawing, we need to call drawCard directly since playAITurn would try to make another decision
+            const drawnCard = gameEngine.drawCard(currentPlayer.id)
+            console.log("AI draw result:", drawnCard ? "success" : "failed", "New current player:", gameEngine.getCurrentPlayer().name)
 
-        // Execute AI draw after animation
-        setTimeout(() => {
-          // For AI drawing, we need to call drawCard directly since playAITurn would try to make another decision
-          const drawnCard = gameEngine.drawCard(currentPlayer.id)
-          console.log("AI draw result:", drawnCard ? "success" : "failed", "New current player:", gameEngine.getCurrentPlayer().name)
+            const gameData = convertToUIFormat()
+            setPlayers(gameData.players)
+            setCurrentCard(gameData.currentCard)
+            setDirection(gameData.direction)
+            setCurrentPlayerId(gameEngine.getCurrentPlayer().id)
+            setIsAITurnAnimating(false)
+          }, drawDelay)
+        } else if (cardToPlay) {
+          // AI will play a card
+          console.log("AI playing card:", cardToPlay)
+          const aiSounds = ["play", "special"] as const
+          const randomSound = aiSounds[Math.floor(Math.random() * aiSounds.length)]
+          playSound(randomSound)
+
+          const aiPlayerRect = aiPlayerElement.getBoundingClientRect()
+          const centerRect = centerElement.getBoundingClientRect()
+
+          // Create AI card throwing animation with randomized duration
+          const throwDuration = getRandomAnimationDuration(1800, 0.5) // 900ms to 2700ms - reduced from 3000ms
+          const animatedCard: AnimatedCard = {
+            id: Date.now() + currentPlayerIndex,
+            card: cardToPlay,
+            startX: aiPlayerRect.left + aiPlayerRect.width / 2,
+            startY: aiPlayerRect.top + aiPlayerRect.height / 2,
+            endX: centerRect.left + centerRect.width / 2,
+            endY: centerRect.top + centerRect.height / 2,
+            currentX: aiPlayerRect.left + aiPlayerRect.width / 2,
+            currentY: aiPlayerRect.top + aiPlayerRect.height / 2,
+            isAnimating: true,
+            type: 'throw',
+            rotation: Math.random() * 720 - 360, // More dramatic rotation for AI
+            scale: 1.5, // Make it bigger for better visibility
+            zIndex: 10000,
+            trajectory: 'arc', // Use arc for more dramatic AI throws
+            duration: throwDuration,
+            delay: 0,
+            startTime: Date.now(),
+            // Enhanced physics properties for AI throw
+            velocity: { x: 0, y: 0 },
+            gravity: 0.6,
+            bounce: 0.8,
+            spin: (Math.random() - 0.5) * 8, // Reduced from 30 to 8 for more subtle rotation
+            airResistance: 0.97,
+            maxBounces: 3,
+            bounceCount: 0
+          }
+
+          setAnimatedCards((prev) => [...prev, animatedCard])
+          playSound("card-flip")
+
+          // Execute AI play after animation with randomized delay
+          const throwDelay = throwDuration + Math.random() * 300 + 200 // Add 200-500ms buffer
+          setTimeout(() => {
+            // For AI playing, we need to call playCard directly with the chosen card
+            const success = gameEngine.playCard(currentPlayer.id, cardToPlay.id.toString(), chosenWildColor as UnoColor | undefined)
+            console.log("AI play result:", success, "New current player:", gameEngine.getCurrentPlayer().name)
+
+            const gameData = convertToUIFormat()
+            setPlayers(gameData.players)
+            setCurrentCard(gameData.currentCard)
+            setDirection(gameData.direction)
+            setCurrentPlayerId(gameEngine.getCurrentPlayer().id)
+            setIsAITurnAnimating(false)
+          }, throwDelay)
+        } else {
+          // Fallback: just execute AI turn without animation
+          console.log("AI turn fallback - no animation")
+          const success = gameEngine.playAITurn()
+          console.log("AI turn result:", success, "New current player:", gameEngine.getCurrentPlayer().name)
 
           const gameData = convertToUIFormat()
           setPlayers(gameData.players)
@@ -715,57 +910,10 @@ export default function UnoGame() {
           setDirection(gameData.direction)
           setCurrentPlayerId(gameEngine.getCurrentPlayer().id)
           setIsAITurnAnimating(false)
-        }, 1600)
-      } else if (cardToPlay) {
-        // AI will play a card
-        console.log("AI playing card:", cardToPlay)
-        const aiSounds = ["play", "special"] as const
-        const randomSound = aiSounds[Math.floor(Math.random() * aiSounds.length)]
-        playSound(randomSound)
-
-        const aiPlayerRect = aiPlayerElement.getBoundingClientRect()
-        const centerRect = centerElement.getBoundingClientRect()
-
-        // Create AI card throwing animation with the actual card being played
-        const animatedCard: AnimatedCard = {
-          id: Date.now() + currentPlayerIndex,
-          card: cardToPlay,
-          startX: aiPlayerRect.left + aiPlayerRect.width / 2,
-          startY: aiPlayerRect.top + aiPlayerRect.height / 2,
-          endX: centerRect.left + centerRect.width / 2,
-          endY: centerRect.top + centerRect.height / 2,
-          currentX: aiPlayerRect.left + aiPlayerRect.width / 2,
-          currentY: aiPlayerRect.top + aiPlayerRect.height / 2,
-          isAnimating: true,
-          type: 'throw',
-          rotation: Math.random() * 720 - 360, // More dramatic rotation for AI
-          scale: 1.5, // Make it bigger for better visibility
-          zIndex: 10000,
-          trajectory: 'arc', // Use arc for more dramatic AI throws
-          duration: 3000, // Longer duration for better visibility
-          delay: 0,
-          startTime: Date.now(),
         }
-
-        setAnimatedCards((prev) => [...prev, animatedCard])
-        playSound("card-flip")
-
-        // Execute AI play after animation
-        setTimeout(() => {
-          // For AI playing, we need to call playCard directly with the chosen card
-          const success = gameEngine.playCard(currentPlayer.id, cardToPlay.id.toString(), chosenWildColor as UnoColor | undefined)
-          console.log("AI play result:", success, "New current player:", gameEngine.getCurrentPlayer().name)
-
-          const gameData = convertToUIFormat()
-          setPlayers(gameData.players)
-          setCurrentCard(gameData.currentCard)
-          setDirection(gameData.direction)
-          setCurrentPlayerId(gameEngine.getCurrentPlayer().id)
-          setIsAITurnAnimating(false)
-        }, 3100)
       } else {
         // Fallback: just execute AI turn without animation
-        console.log("AI turn fallback - no animation")
+        console.log("AI turn fallback - no DOM elements")
         const success = gameEngine.playAITurn()
         console.log("AI turn result:", success, "New current player:", gameEngine.getCurrentPlayer().name)
 
@@ -776,19 +924,7 @@ export default function UnoGame() {
         setCurrentPlayerId(gameEngine.getCurrentPlayer().id)
         setIsAITurnAnimating(false)
       }
-    } else {
-      // Fallback: just execute AI turn without animation
-      console.log("AI turn fallback - no DOM elements")
-      const success = gameEngine.playAITurn()
-      console.log("AI turn result:", success, "New current player:", gameEngine.getCurrentPlayer().name)
-
-      const gameData = convertToUIFormat()
-      setPlayers(gameData.players)
-      setCurrentCard(gameData.currentCard)
-      setDirection(gameData.direction)
-      setCurrentPlayerId(gameEngine.getCurrentPlayer().id)
-      setIsAITurnAnimating(false)
-    }
+    }, thinkingTime) // Close the setTimeout with thinking time
   }
 
   const canPlayCard = (card: GameCard, topCard: GameCard): boolean => {
@@ -899,18 +1035,23 @@ export default function UnoGame() {
     }
   }, [gameEngine, currentCard])
 
-  // Animation frame update for smooth card movement
+  // Enhanced physics-based animation frame update
   useEffect(() => {
     if (animatedCards.length === 0) return
 
     let animationId: number
+    let lastTime = Date.now()
 
     const animate = () => {
+      const currentTime = Date.now()
+      const deltaTime = (currentTime - lastTime) / 16.67 // Normalize to 60fps
+      lastTime = currentTime
+
       setAnimatedCards(prev => {
         const updated = prev.map(card => {
           if (!card.isAnimating) return card
 
-          const elapsed = Date.now() - card.startTime
+          const elapsed = currentTime - card.startTime
           const progress = Math.min(elapsed / card.duration, 1)
 
           if (progress >= 1) {
@@ -921,11 +1062,63 @@ export default function UnoGame() {
             return { ...card, isAnimating: false, currentX: card.endX, currentY: card.endY, type: 'land' as any }
           }
 
-          // Simple linear interpolation for smooth movement
-          const currentX = card.startX + (card.endX - card.startX) * progress
-          const currentY = card.startY + (card.endY - card.startY) * progress
+          // Enhanced physics-based movement
+          let currentX = card.currentX
+          let currentY = card.currentY
+          let currentRotation = card.rotation
 
-          return { ...card, currentX, currentY }
+          if (card.trajectory === 'arc') {
+            // Arc trajectory with physics
+            const arcProgress = Math.sin(progress * Math.PI)
+            const height = -100 * arcProgress // Arc height
+            currentX = card.startX + (card.endX - card.startX) * progress
+            currentY = card.startY + (card.endY - card.startY) * progress + height
+
+            // Apply spin rotation (reduced for more subtle effect)
+            currentRotation = card.spin * progress * 90
+          } else if (card.trajectory === 'bounce') {
+            // Bounce trajectory with physics
+            if (card.bounceCount < card.maxBounces) {
+              const bounceProgress = progress * (card.maxBounces + 1)
+              const bounceIndex = Math.floor(bounceProgress)
+              const bounceLocalProgress = bounceProgress - bounceIndex
+
+              if (bounceLocalProgress < 1) {
+                const arcHeight = 50 * Math.sin(bounceLocalProgress * Math.PI)
+                currentX = card.startX + (card.endX - card.startX) * (bounceIndex / (card.maxBounces + 1))
+                currentY = card.startY + (card.endY - card.startY) * (bounceIndex / (card.maxBounces + 1)) - arcHeight
+              }
+            } else {
+              // Final approach to target
+              const finalProgress = (progress - (card.maxBounces / (card.maxBounces + 1))) * (card.maxBounces + 1)
+              currentX = card.startX + (card.endX - card.startX) * (0.8 + finalProgress * 0.2)
+              currentY = card.startY + (card.endY - card.startY) * (0.8 + finalProgress * 0.2)
+            }
+          } else {
+            // Straight trajectory with subtle physics
+            currentX = card.startX + (card.endX - card.startX) * progress
+            currentY = card.startY + (card.endY - card.startY) * progress
+
+            // Add subtle wobble for draw animations
+            if (card.type === 'draw') {
+              const wobble = Math.sin(progress * Math.PI * 4) * 3
+              currentY += wobble
+              currentRotation = card.spin * progress * 45 // Reduced from 180 to 45 for more subtle rotation
+            }
+          }
+
+          // Apply gravity effect for arc trajectories
+          if (card.trajectory === 'arc' && progress > 0.5) {
+            const gravityEffect = card.gravity * (progress - 0.5) * 20
+            currentY += gravityEffect
+          }
+
+          return {
+            ...card,
+            currentX,
+            currentY,
+            rotation: currentRotation
+          }
         })
 
         // Remove completed animations and return to pool
@@ -1128,21 +1321,27 @@ export default function UnoGame() {
 
   return (
     <div className="min-h-screen relative overflow-hidden">
-      {/* New warm casino background */}
+      {/* Enhanced casino background with ambient effects */}
       <div className="absolute inset-0 bg-gradient-to-br from-slate-800 via-red-900 to-green-900"></div>
 
-      {/* Casino table surface */}
-      <div className="absolute inset-0">
+      {/* Casino table surface with enhanced effects */}
+      <div className="absolute inset-0 table-surface-enhanced">
         <div className="absolute bottom-0 left-0 right-0 h-[60vh] bg-gradient-to-t from-green-800/90 via-green-700/70 to-transparent"></div>
         <div className="absolute top-1/4 left-1/4 right-1/4 bottom-1/4 bg-green-800/20 rounded-full blur-3xl"></div>
       </div>
 
-      {/* Enhanced lighting effects */}
-      <div className="absolute inset-0 opacity-30">
-        <div className="absolute top-20 left-20 w-40 h-40 bg-gradient-to-r from-yellow-500 to-orange-500 rounded-full blur-3xl animate-pulse"></div>
-        <div className="absolute top-40 right-32 w-32 h-32 bg-gradient-to-r from-red-500 to-pink-500 rounded-full blur-2xl animate-bounce"></div>
-        <div className="absolute bottom-40 left-1/3 w-48 h-48 bg-gradient-to-r from-blue-500 to-cyan-500 rounded-full blur-4xl animate-pulse" style={{ animationDelay: '1s' }}></div>
+      {/* Ambient casino lighting effects */}
+      <div className="absolute inset-0">
+        <div className="lighting-effect"></div>
+        <div className="lighting-effect"></div>
+        <div className="lighting-effect"></div>
       </div>
+
+      {/* Floating casino elements */}
+      <div className="floating-casino-elements"></div>
+
+      {/* Casino ambiance overlay */}
+      <div className="casino-ambiance"></div>
 
       {animatedCards.map((animatedCard) => {
         const getAnimationStyle = () => {
@@ -1203,7 +1402,7 @@ export default function UnoGame() {
                 color={animatedCard.card.color}
                 value={animatedCard.card.value}
                 size="medium"
-                className={`uno-card-enhanced ${getGlowEffect()}`}
+                className={`uno-card-enhanced card-physics-enhanced ${getGlowEffect()}`}
               />
 
               {/* Enhanced glow effects based on animation type */}
