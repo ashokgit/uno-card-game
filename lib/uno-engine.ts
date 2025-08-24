@@ -112,8 +112,10 @@ export class UnoCard {
 export class UnoDeck {
   private cards: UnoCard[] = []
   private discardPile: UnoCard[] = []
+  private debugMode: boolean = false
 
-  constructor(private onReshuffle?: (remaining: number) => void) {
+  constructor(private onReshuffle?: (remaining: number) => void, debugMode: boolean = false) {
+    this.debugMode = debugMode
     this.initializeDeck()
     this.shuffle()
   }
@@ -159,9 +161,21 @@ export class UnoDeck {
 
   drawCard(): UnoCard | null {
     if (this.cards.length === 0) {
+      if (this.debugMode) {
+        console.log(`[DECK] Deck empty, attempting to reshuffle discard pile`)
+      }
       this.reshuffleDiscardPile()
     }
-    return this.cards.pop() || null
+
+    const card = this.cards.pop()
+    if (this.debugMode) {
+      if (card) {
+        console.log(`[DECK] Card drawn: ${card.color} ${card.value}. Remaining: ${this.cards.length}`)
+      } else {
+        console.log(`[DECK] No card drawn - deck empty after reshuffle attempt`)
+      }
+    }
+    return card || null
   }
 
   drawCards(count: number): UnoCard[] {
@@ -174,13 +188,23 @@ export class UnoDeck {
   }
 
   public reshuffleDiscardPile(): void {
+    if (this.debugMode) {
+      console.log(`[DECK] Attempting reshuffle - deck: ${this.cards.length} cards, discard: ${this.discardPile.length} cards`)
+    }
+
     if (this.discardPile.length <= 1) {
       // Special case: if deck is empty and discard pile has only 1 card,
       // we need to handle this to prevent deadlock
       if (this.cards.length === 0 && this.discardPile.length === 1) {
+        if (this.debugMode) {
+          console.log(`[DECK] Cannot reshuffle - deck empty and only 1 card in discard pile`)
+        }
         // In this case, we can't reshuffle, but we should signal this to the game
         // The game will handle the deadlock detection
         return
+      }
+      if (this.debugMode) {
+        console.log(`[DECK] Cannot reshuffle - discard pile has only ${this.discardPile.length} cards`)
       }
       return
     }
@@ -191,6 +215,10 @@ export class UnoDeck {
     this.cards = [...this.discardPile]
     this.discardPile = [topCard]
     this.shuffle()
+
+    if (this.debugMode) {
+      console.log(`[DECK] Reshuffled ${cardsToReshuffle} cards back into deck. Top card: ${topCard.color} ${topCard.value}. New deck size: ${this.cards.length}`)
+    }
 
     // Notify parent about reshuffle
     this.onReshuffle?.(this.cards.length)
@@ -396,7 +424,7 @@ export class UnoGame {
     this.events = events
     this.deck = new UnoDeck((remaining) => {
       this.emitEvent('onDeckReshuffled', remaining)
-    })
+    }, this.rules.debugMode)
     this.initializePlayers(playerNames, humanPlayerIndex)
     this.dealInitialCards()
     this.startGame()
@@ -438,6 +466,12 @@ export class UnoGame {
       consecutiveSkips: this.consecutiveSkips,
       lastPlayerWhoSkipped: this.lastPlayerWhoSkipped,
       playerHandSizes: this.players.map(p => `${p.name}: ${p.getHandSize()} cards`),
+      playerHands: this.players.map(p => ({
+        name: p.name,
+        handSize: p.getHandSize(),
+        cards: p.getHand().map(c => `${c.color} ${c.value}`),
+        playableCards: this.getTopCard() ? p.getPlayableCards(this.getTopCard()!, this.wildColor || undefined).map(c => `${c.color} ${c.value}`) : []
+      })),
       isDeadlock: this.isDeadlock()
     }
 
@@ -919,6 +953,13 @@ export class UnoGame {
     this.debugLog('DRAW', `${player.name} has ${playableCards.length} playable cards:`,
       playableCards.map(c => `${c.color} ${c.value}`))
 
+    // Log why player is drawing (no playable cards vs choice)
+    if (playableCards.length === 0) {
+      this.debugLog('DRAW', `${player.name} must draw - no playable cards available`)
+    } else {
+      this.debugLog('DRAW', `${player.name} choosing to draw despite having ${playableCards.length} playable cards`)
+    }
+
     // Only forbid drawing if that house rule is enabled
     if (!this.rules.allowDrawWhenPlayable && playableCards.length > 0) {
       this.debugLog('DRAW', `Draw blocked: player has playable cards and allowDrawWhenPlayable=false`)
@@ -930,6 +971,14 @@ export class UnoGame {
     if (card) {
       this.debugLog('DRAW', `${player.name} successfully drew: ${card.color} ${card.value}`)
       player.addCards([card])
+
+      // Log updated hand after drawing
+      this.debugLog('DRAW', `${player.name} hand after drawing:`, {
+        handSize: player.getHandSize(),
+        cards: player.getHand().map(c => `${c.color} ${c.value}`),
+        newlyDrawnCard: `${card.color} ${card.value}`,
+        isPlayable: card.canPlayOn(topCard, this.wildColor || undefined, [])
+      })
 
       // Check if the drawn card is playable
       const drawnCardPlayable = card.canPlayOn(topCard, this.wildColor || undefined, [])
@@ -991,6 +1040,7 @@ export class UnoGame {
       this.debugLog('DEADLOCK', 'Checking for deadlock after failed draw...')
       if (this.isDeadlock()) {
         this.debugLog('DEADLOCK', `Deadlock detected, using resolution strategy: ${this.rules.deadlockResolution}`)
+        this.logGameSituation() // Log detailed game situation when deadlock is detected
         if (this.rules.deadlockResolution === 'force_reshuffle') {
           this.resolveDeadlockWithReshuffle()
         } else {
@@ -1331,6 +1381,114 @@ export class UnoGame {
       deckCount: this.deck.getRemainingCount(),
       discardPileCount: this.deck.getDiscardPile().length,
     }
+  }
+
+  // Get detailed game statistics for analysis
+  getDetailedGameStats(): {
+    gameDuration: string;
+    totalTurns: number;
+    cardsPlayed: number;
+    cardsDrawn: number;
+    actionCards: number;
+    wildCards: number;
+    unoCalls: number;
+    challenges: number;
+    currentDirection: GameDirection;
+    topCard: string;
+    players: number;
+    playerDetails: Array<{
+      name: string;
+      handSize: number;
+      cards: string[];
+      playableCards: string[];
+      score: number;
+    }>;
+    deckInfo: {
+      remainingCards: number;
+      discardPileCount: number;
+      topCard: string;
+    };
+    deadlockInfo: {
+      consecutiveSkips: number;
+      isDeadlock: boolean;
+      lastPlayerWhoSkipped: string | null;
+    };
+  } {
+    const topCard = this.getTopCard()
+    const actionCards = this.eventLog.filter(log => log.event === 'onActionCardPlayed').length
+    const wildCards = this.eventLog.filter(log =>
+      log.event === 'onCardPlayed' && log.data && log.data[1] && log.data[1].color === 'wild'
+    ).length
+    const unoCalls = this.eventLog.filter(log => log.event === 'onUnoCalled').length
+    const challenges = this.eventLog.filter(log =>
+      log.event === 'onUnoChallenged' || log.event === 'onWildDrawFourChallenged'
+    ).length
+
+    return {
+      gameDuration: this.calculateGameDuration(),
+      totalTurns: this.turnCount,
+      cardsPlayed: this.eventLog.filter(log => log.event === 'onCardPlayed').length,
+      cardsDrawn: this.eventLog.filter(log => log.event === 'onCardDrawn').length,
+      actionCards,
+      wildCards,
+      unoCalls,
+      challenges,
+      currentDirection: this.direction,
+      topCard: topCard ? `${topCard.color} ${topCard.value}` : 'None',
+      players: this.players.length,
+      playerDetails: this.players.map(p => ({
+        name: p.name,
+        handSize: p.getHandSize(),
+        cards: p.getHand().map(c => `${c.color} ${c.value}`),
+        playableCards: topCard ? p.getPlayableCards(topCard, this.wildColor || undefined).map(c => `${c.color} ${c.value}`) : [],
+        score: p.getScore()
+      })),
+      deckInfo: {
+        remainingCards: this.deck.getRemainingCount(),
+        discardPileCount: this.deck.getDiscardPile().length,
+        topCard: topCard ? `${topCard.color} ${topCard.value}` : 'None'
+      },
+      deadlockInfo: this.getDeadlockInfo()
+    }
+  }
+
+  // Calculate game duration (placeholder - would need start time tracking)
+  private calculateGameDuration(): string {
+    // This would need to be implemented with actual start time tracking
+    return "Unknown"
+  }
+
+  // Log current game situation for analysis
+  logGameSituation(): void {
+    if (!this.rules.debugMode) return
+
+    const stats = this.getDetailedGameStats()
+    console.log('\n=== GAME SITUATION ANALYSIS ===')
+    console.log(`Turn: ${stats.totalTurns}`)
+    console.log(`Current Player: ${this.getCurrentPlayer().name}`)
+    console.log(`Direction: ${stats.currentDirection}`)
+    console.log(`Top Card: ${stats.topCard}`)
+    console.log(`Deck: ${stats.deckInfo.remainingCards} cards remaining`)
+    console.log(`Discard Pile: ${stats.deckInfo.discardPileCount} cards`)
+    console.log(`Consecutive Skips: ${stats.deadlockInfo.consecutiveSkips}`)
+    console.log(`Is Deadlock: ${stats.deadlockInfo.isDeadlock}`)
+
+    console.log('\n=== PLAYER DETAILS ===')
+    stats.playerDetails.forEach(player => {
+      console.log(`${player.name}: ${player.handSize} cards`)
+      console.log(`  Cards: ${player.cards.join(', ')}`)
+      console.log(`  Playable: ${player.playableCards.join(', ')}`)
+      console.log(`  Score: ${player.score}`)
+    })
+
+    console.log('\n=== GAME STATISTICS ===')
+    console.log(`Cards Played: ${stats.cardsPlayed}`)
+    console.log(`Cards Drawn: ${stats.cardsDrawn}`)
+    console.log(`Action Cards: ${stats.actionCards}`)
+    console.log(`Wild Cards: ${stats.wildCards}`)
+    console.log(`UNO Calls: ${stats.unoCalls}`)
+    console.log(`Challenges: ${stats.challenges}`)
+    console.log('================================\n')
   }
 
   // Check for deadlock conditions
@@ -1677,9 +1835,24 @@ export class UnoGame {
 
   private executeAITurn(currentPlayer: UnoPlayer): void {
     this.debugLog('AI', `${currentPlayer.name} making AI decision...`)
+
+    // Log current hand and playable cards before decision
+    const topCard = this.getTopCard()
+    if (topCard) {
+      const playableCards = currentPlayer.getPlayableCards(topCard, this.wildColor || undefined)
+      this.debugLog('AI', `${currentPlayer.name} decision analysis:`, {
+        handSize: currentPlayer.getHandSize(),
+        handCards: currentPlayer.getHand().map(c => `${c.color} ${c.value}`),
+        topCard: `${topCard.color} ${topCard.value}`,
+        wildColor: this.wildColor,
+        playableCards: playableCards.map(c => `${c.color} ${c.value}`),
+        playableCount: playableCards.length
+      })
+    }
+
     const decision = this.decideAITurn()
     if (!decision) {
-      this.debugLog('AI', `${currentPlayer.name} could not decide on action`)
+      this.debugLog('AI', `${currentPlayer.name} could not decide on action - no playable cards and must draw`)
       this.log("AI could not decide on action")
       return
     }
