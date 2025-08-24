@@ -138,8 +138,35 @@ uno-card-game/
 ├── hooks/                # Custom React hooks
 ├── public/               # Static assets
 │   └── *.png             # Player avatars
-└── styles/               # Additional styles
+├── styles/               # Additional styles
+└── tests/                # Test files
+    ├── README.md         # Test documentation
+    ├── run-tests.js      # Test runner
+    └── uno-game-simulation.js # Game simulation test
 ```
+
+## 🧪 Testing
+
+### Running Tests
+The project includes comprehensive tests to ensure the game engine works correctly.
+
+**Run all tests:**
+```bash
+node tests/run-tests.js
+```
+
+**Run specific test:**
+```bash
+node tests/uno-game-simulation.js
+```
+
+### Test Coverage
+- **Game Simulation**: Complete UNO game simulation with proper completion
+- **AI Behavior**: Tests AI player decision-making and card playing
+- **Game Mechanics**: Validates special card effects and scoring
+- **Engine Issues**: Identifies and demonstrates known engine problems
+
+For detailed test documentation, see [tests/README.md](tests/README.md).
 
 ## 🎨 Customization
 
@@ -190,9 +217,18 @@ We welcome contributions! Here's how you can help:
 
 ## 🐛 Known Issues
 
+- **AI Turn Issue**: The `playAITurn()` method in the engine uses asynchronous `setTimeout()` which prevents proper game completion in simulation scenarios
 - Mobile responsiveness could be improved for very small screens
 - Some edge cases in AI decision-making
 - Audio context may require user interaction on some browsers
+
+### Engine Issue Details
+The UNO engine has a critical issue where AI players never actually play cards in synchronous simulations because the `playAITurn()` method schedules AI decisions with `setTimeout()` but doesn't wait for them to complete. This causes:
+- Hand sizes to grow exponentially (players only draw, never play)
+- Games to never reach completion
+- Infinite loops in simulation scenarios
+
+The test suite demonstrates the correct behavior when AI players properly make their moves.
 
 ## 📝 License
 

@@ -653,14 +653,14 @@ export class UnoGame {
     // Handle UNO state
     this._handleUnoState(player!, isUnoCall)
 
-    // Check for win
+    // Handle special card effects FIRST (even if this is the winning card)
+    this.handleCardEffect(playedCard, chosenWildColor)
+
+    // Check for win AFTER applying effects
     if (player!.isEmpty()) {
       this.endRound(player!)
       return true
     }
-
-    // Handle special card effects
-    this.handleCardEffect(playedCard, chosenWildColor)
 
     // Reset consecutive skips counter since a card was played
     this.consecutiveSkips = 0
