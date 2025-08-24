@@ -950,3 +950,170 @@
   left: 20%;
   animation-delay: 4s;
 }
+
+/* Enhanced Deck Animations */
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+@keyframes shuffle {
+  0%, 100% { transform: perspective(800px) rotateX(10deg) rotateY(-5deg) translateZ(0px); }
+  25% { transform: perspective(800px) rotateX(15deg) rotateY(-10deg) translateZ(10px); }
+  50% { transform: perspective(800px) rotateX(5deg) rotateY(5deg) translateZ(5px); }
+  75% { transform: perspective(800px) rotateX(12deg) rotateY(-8deg) translateZ(8px); }
+}
+
+@keyframes particle-float {
+  0% {
+    transform: translateY(0) translateX(0) scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: translateY(-30px) translateX(10px) scale(1.2);
+    opacity: 0.8;
+  }
+  100% {
+    transform: translateY(-60px) translateX(20px) scale(0);
+    opacity: 0;
+  }
+}
+
+@keyframes pulse-slow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+@keyframes pulse-ring {
+  0% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.05); opacity: 0.5; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(10px) translateX(-50%); }
+  to { opacity: 1; transform: translateY(0) translateX(-50%); }
+}
+
+.animate-shimmer {
+  animation: shimmer 3s ease-in-out infinite;
+}
+
+.animate-shuffle {
+  animation: shuffle 0.3s ease-in-out;
+}
+
+.animate-particle-float {
+  animation: particle-float 2s ease-out forwards;
+}
+
+.animate-pulse-slow {
+  animation: pulse-slow 2s ease-in-out infinite;
+}
+
+.animate-pulse-ring {
+  animation: pulse-ring 2s ease-in-out infinite;
+}
+
+.animate-fade-in {
+  animation: fade-in 0.2s ease-out;
+}
+
+/* Enhanced Deck 3D Effects */
+.deck-3d-stack {
+  transform-style: preserve-3d;
+  perspective: 1000px;
+}
+
+.deck-card-layer {
+  position: absolute;
+  border-radius: 8px;
+  transition: all 0.3s ease;
+}
+
+.deck-main-card {
+  transform-style: preserve-3d;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.deck-main-card:hover {
+  transform: perspective(800px) rotateX(15deg) rotateY(-5deg) translateZ(20px) translateY(-8px) rotate(2deg);
+}
+
+.deck-glow-aura {
+  position: absolute;
+  border-radius: 8px;
+  filter: blur(20px);
+  transition: all 0.3s ease;
+  pointer-events: none;
+}
+
+/* Enhanced deck visual effects */
+.deck-enhanced {
+  position: relative;
+  transform-style: preserve-3d;
+  perspective: 1200px;
+}
+
+.deck-enhanced::before {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  background: linear-gradient(45deg, transparent, rgba(255,255,255,0.1), transparent);
+  border-radius: 12px;
+  animation: shimmer 3s infinite;
+  pointer-events: none;
+}
+
+.deck-card-stack {
+  position: relative;
+  transform-style: preserve-3d;
+}
+
+.deck-card-background {
+  position: absolute;
+  background: linear-gradient(135deg, #dc2626, #991b1b);
+  border: 2px solid rgba(255,255,255,0.2);
+  border-radius: 8px;
+  box-shadow: 
+    0 4px 8px rgba(0,0,0,0.3),
+    0 2px 4px rgba(0,0,0,0.2),
+    inset 0 1px 0 rgba(255,255,255,0.1);
+}
+
+.deck-card-main {
+  position: relative;
+  background: linear-gradient(135deg, #dc2626, #991b1b);
+  border: 2px solid rgba(255,255,255,0.3);
+  border-radius: 8px;
+  box-shadow: 
+    0 8px 16px rgba(0,0,0,0.4),
+    0 4px 8px rgba(0,0,0,0.3),
+    inset 0 1px 0 rgba(255,255,255,0.2);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transform-style: preserve-3d;
+}
+
+.deck-card-main:hover {
+  transform: 
+    perspective(800px) 
+    rotateX(15deg) 
+    rotateY(-5deg) 
+    translateZ(20px) 
+    translateY(-8px) 
+    rotate(2deg);
+  box-shadow: 
+    0 20px 40px rgba(0,0,0,0.5),
+    0 8px 16px rgba(0,0,0,0.4),
+    0 0 0 4px rgba(255,215,0,0.3);
+}
+
+.deck-glow-active {
+  filter: drop-shadow(0 0 20px rgba(0, 191, 255, 0.6))
+          drop-shadow(0 0 40px rgba(0, 150, 255, 0.4));
+}
+
+.deck-glow-available {
+  filter: drop-shadow(0 0 15px rgba(255, 215, 0, 0.5))
+          drop-shadow(0 0 30px rgba(255, 165, 0, 0.3));
+}

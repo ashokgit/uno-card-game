@@ -6,6 +6,8 @@ import { Card } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { UnoCard } from "@/components/uno-cards"
+import { EnhancedDeck } from "@/components/enhanced-deck"
+import { EnhancedDiscardPile } from "@/components/enhanced-discard-pile"
 import {
   Trophy,
   Coins,
@@ -1598,23 +1600,13 @@ export default function UnoGame() {
         </div>
 
         <div className="flex items-center gap-8">
-          <div className="relative" data-deck>
-            <Card
-              className={`bg-gradient-to-br from-red-600 to-red-800 border-2 border-white/30 shadow-2xl transform rotate-2 cursor-pointer transition-transform ${playDelay ? "opacity-50" : "hover:scale-105"
-                }`}
+          <div data-deck>
+            <EnhancedDeck
+              deckCount={gameEngine?.getDeckCount() || 0}
+              isDrawable={!playDelay && (gameEngine?.getDeckCount() || 0) > 0}
+              isPlayerTurn={players[0]?.isActive || false}
               onClick={drawCard}
-              style={{ width: '80px', height: '120px' }}
-            >
-              <div className="w-full h-full rounded-lg flex items-center justify-center relative">
-                <Hand className="w-8 h-8 text-white drop-shadow-lg" />
-                <div className="absolute inset-2 border-2 border-white/30 rounded-md"></div>
-                <div className="absolute top-1 left-1 w-2 h-2 bg-white/40 rounded-full"></div>
-                <div className="absolute bottom-1 right-1 w-2 h-2 bg-white/40 rounded-full"></div>
-              </div>
-            </Card>
-            <Badge className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 bg-black/70 text-white border-white/20">
-              {gameEngine?.getDeckCount()}
-            </Badge>
+            />
           </div>
 
           <div className="relative" data-center-pile>
@@ -1800,49 +1792,20 @@ export default function UnoGame() {
 
       <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-10">
         <div className="flex items-center gap-8">
-          <div className="relative" data-deck>
-            <Card
-              className={`bg-gradient-to-br from-red-600 to-red-800 border-2 border-white/30 shadow-2xl transform rotate-2 cursor-pointer transition-transform ${playDelay ? "opacity-50" : "hover:scale-105"
-                }`}
+          <div data-deck>
+            <EnhancedDeck
+              deckCount={gameEngine?.getDeckCount() || 0}
+              isDrawable={!playDelay && (gameEngine?.getDeckCount() || 0) > 0}
+              isPlayerTurn={players[0]?.isActive || false}
               onClick={drawCard}
-              style={{ width: '80px', height: '120px' }}
-            >
-              <div className="w-full h-full rounded-lg flex items-center justify-center relative">
-                <Hand className="w-8 h-8 text-white drop-shadow-lg" />
-                <div className="absolute inset-2 border-2 border-white/30 rounded-md"></div>
-                <div className="absolute top-1 left-1 w-2 h-2 bg-white/40 rounded-full"></div>
-                <div className="absolute bottom-1 right-1 w-2 h-2 bg-white/40 rounded-full"></div>
-              </div>
-            </Card>
-            <Badge className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 bg-black/70 text-white border-white/20">
-              {gameEngine?.getDeckCount()}
-            </Badge>
+            />
           </div>
 
           <div className="relative" data-center-pile>
-            <div
-              className={`transform -rotate-1 transition-all duration-500 ${isAnimating ? "scale-110 rotate-12" : ""}`}
-            >
-              {currentCard && !isAnimating && (
-                <div className="relative">
-                  <UnoCard
-                    color={currentCard.color}
-                    value={currentCard.value}
-                    size="medium"
-                    className="shadow-2xl border-white/30 relative z-10"
-                  />
-                  {/* Enhanced glow effect for current card */}
-                  <div className="absolute inset-0 bg-yellow-400/20 rounded-lg blur-xl animate-pulse scale-110"></div>
-                  <div className="absolute inset-0 bg-white/10 rounded-lg blur-md animate-ping scale-105"></div>
-                  <div className="absolute inset-0 ring-4 ring-yellow-400/30 rounded-lg animate-pulse scale-125"></div>
-                </div>
-              )}
-              {isAnimating && (
-                <div className="w-20 h-28 bg-gradient-to-br from-gray-600 to-gray-800 border-2 border-white/30 shadow-2xl rounded-lg flex items-center justify-center">
-                  <div className="w-4 h-4 bg-white/40 rounded-full animate-pulse"></div>
-                </div>
-              )}
-            </div>
+            <EnhancedDiscardPile
+              currentCard={currentCard}
+              isAnimating={isAnimating}
+            />
             <div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
               <Badge className="bg-yellow-400 text-black animate-bounce font-bold shadow-xl flex items-center gap-2 px-3 py-1 font-gaming-secondary">
                 <ArrowRight className="w-4 h-4" />
