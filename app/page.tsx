@@ -21,9 +21,13 @@ import {
   Shuffle,
   Brain,
   Clock,
+  Settings,
+  Home,
 } from "lucide-react"
-import { UnoGame as GameEngine, type UnoCard as EngineCard, type GameDirection, type UnoColor } from "@/lib/uno-engine"
+import { UnoGame as GameEngine, type UnoCard as EngineCard, type GameDirection, type UnoColor, type UnoRules } from "@/lib/uno-engine"
 import { GameLog } from "@/components/game-log"
+import { MainMenu } from "@/components/main-menu"
+import { SettingsProvider, useSettings } from "@/contexts/settings-context"
 
 interface Player {
   id: number
@@ -71,7 +75,8 @@ interface AnimatedCard {
   bounceCount: number
 }
 
-export default function UnoGame() {
+function UnoGameInner() {
+  const { uiSettings } = useSettings()
   const [gameEngine, setGameEngine] = useState<GameEngine | null>(null)
   const [gameState, setGameState] = useState({
     level: 3,
@@ -92,17 +97,31 @@ export default function UnoGame() {
   const [isDiscardPileVisible, setIsDiscardPileVisible] = useState(false)
   const [showActionConfirm, setShowActionConfirm] = useState<{ card: GameCard; confirmed: () => void } | null>(null)
   const [isDeveloperMode, setIsDeveloperMode] = useState(false)
+  const [showMainMenu, setShowMainMenu] = useState(true)
+  const [currentRules, setCurrentRules] = useState<UnoRules>({
+    stackDrawTwo: false,
+    stackDrawFour: false,
+    mustPlayIfDrawable: false,
+    allowDrawWhenPlayable: true,
+    targetScore: 500,
+    debugMode: false,
+    aiDifficulty: 'expert',
+    enableJumpIn: false,
+    enableSevenZero: false,
+    enableSwapHands: false,
+    showDiscardPile: true,
+    deadlockResolution: 'end_round',
+  })
 
   // Background music state
   const [isMusicPlaying, setIsMusicPlaying] = useState(false)
-  const [musicVolume, setMusicVolume] = useState(0.3)
   const backgroundMusicRef = useRef<HTMLAudioElement>(null)
 
   // Initialize background music
   useEffect(() => {
     const audio = new Audio('/heartbeat-01-brvhrtz-225058.mp3')
     audio.loop = true
-    audio.volume = musicVolume
+    audio.volume = uiSettings.musicVolume
     audio.preload = 'auto'
     backgroundMusicRef.current = audio
 
@@ -140,15 +159,36 @@ export default function UnoGame() {
   // Update music volume when it changes
   useEffect(() => {
     if (backgroundMusicRef.current) {
-      backgroundMusicRef.current.volume = musicVolume
+      backgroundMusicRef.current.volume = uiSettings.musicVolume
     }
-  }, [musicVolume])
+  }, [uiSettings.musicVolume])
 
-  useEffect(() => {
-    const playerNames = ["You", "Alice", "Bob", "Carol", "Dave", "Eve"]
-    const engine = new GameEngine(playerNames, 0, { showDiscardPile: true }) // Human player at index 0
+  const startGame = (rules: UnoRules, playerCount: number) => {
+    const playerNames = ["You", "Alice", "Bob", "Carol", "Dave", "Eve"].slice(0, playerCount)
+    const engine = new GameEngine(playerNames, 0, rules)
     setGameEngine(engine)
-  }, [])
+    setCurrentRules(rules)
+    setShowMainMenu(false)
+  }
+
+  const returnToMainMenu = () => {
+    setGameEngine(null)
+    setShowMainMenu(true)
+    setPlayers([])
+    setCurrentCard(null)
+    setDirection("clockwise")
+    setCurrentPlayerId("")
+    setFeedback(null)
+    setIsAITurnAnimating(false)
+    setIsLogVisible(false)
+    setIsDiscardPileVisible(false)
+    setShowActionConfirm(null)
+    setIsAnimating(false)
+    setPlayDelay(false)
+    setAnimatedCards([])
+    setAnimationPool([])
+    setNextAnimationId(1)
+  }
 
   // Initialize game state when engine is ready
   useEffect(() => {
@@ -1381,6 +1421,10 @@ export default function UnoGame() {
     }
   }
 
+  if (showMainMenu) {
+    return <MainMenu onStartGame={startGame} />
+  }
+
   if (!gameEngine) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-purple-900 to-slate-800">
@@ -1522,9 +1566,14 @@ export default function UnoGame() {
           <Card className="p-8 bg-gradient-to-r from-yellow-400 to-orange-500 text-black text-center shadow-2xl">
             <h2 className="text-4xl font-bold mb-4 font-gaming">🎉 Game Over! 🎉</h2>
             <p className="text-2xl font-semibold mb-6 font-gaming-secondary">{gameEngine.getRoundWinner()?.name || 'Unknown'} Wins!</p>
-            <Button onClick={() => window.location.reload()} className="bg-black text-white hover:bg-gray-800 font-gaming-secondary">
-              Play Again
-            </Button>
+            <div className="flex gap-4 justify-center">
+              <Button onClick={() => window.location.reload()} className="bg-black text-white hover:bg-gray-800 font-gaming-secondary">
+                Play Again
+              </Button>
+              <Button onClick={returnToMainMenu} className="bg-blue-600 text-white hover:bg-blue-700 font-gaming-secondary">
+                Main Menu
+              </Button>
+            </div>
           </Card>
         </div>
       )}
@@ -1599,6 +1648,16 @@ export default function UnoGame() {
 
       {/* Top-left controls */}
       <div className="absolute top-4 left-4 flex items-center gap-4 z-10">
+        {/* Return to Main Menu */}
+        <Button
+          size="sm"
+          variant="outline"
+          className="bg-black/50 text-white border-white/20 hover:bg-white/10 flex items-center gap-1"
+          onClick={returnToMainMenu}
+        >
+          <Home className="w-4 h-4" />
+          Menu
+        </Button>
         {/* Background Music Controls */}
         <div className={`bg-black/50 text-white p-2 rounded-lg border border-white/20 flex items-center gap-2 transition-all duration-300 ${isMusicPlaying ? 'border-yellow-400/50 shadow-lg shadow-yellow-400/20' : ''}`}>
           <Button
@@ -1626,13 +1685,19 @@ export default function UnoGame() {
               min="0"
               max="1"
               step="0.1"
-              value={musicVolume}
-              onChange={(e) => setMusicVolume(parseFloat(e.target.value))}
+              value={uiSettings.musicVolume}
+              onChange={(e) => {
+                // This would need to be connected to the settings context
+                // For now, just update the audio directly
+                if (backgroundMusicRef.current) {
+                  backgroundMusicRef.current.volume = parseFloat(e.target.value)
+                }
+              }}
               className="w-16 h-2 bg-white/20 rounded-lg appearance-none cursor-pointer slider"
               title="Music Volume"
             />
             <span className="text-xs text-white/70 font-gaming-secondary">
-              {Math.round(musicVolume * 100)}%
+              {Math.round(uiSettings.musicVolume * 100)}%
             </span>
           </div>
         </div>
@@ -2197,5 +2262,13 @@ export default function UnoGame() {
         </div>
       )}
     </div>
+  )
+}
+
+export default function UnoGame() {
+  return (
+    <SettingsProvider>
+      <UnoGameInner />
+    </SettingsProvider>
   )
 }
