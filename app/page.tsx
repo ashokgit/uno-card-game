@@ -2205,7 +2205,7 @@ function UnoGameInner() {
             `}>
               {/* Active player spotlight */}
               {players[0].isActive && (
-                <div className="absolute -inset-4 bg-gradient-to-r from-yellow-400/20 via-yellow-300/30 to-yellow-400/20 rounded-full blur-xl animate-pulse"></div>
+                <div className="absolute -inset-4 bg-gradient-to-r from-yellow-400/20 via-yellow-300/30 to-yellow-400/20 rounded-full blur-xl animate-pulse z-0"></div>
               )}
 
               {/* Enhanced avatar with buttons positioned behind */}
@@ -2219,7 +2219,7 @@ function UnoGameInner() {
               `}>
                 {/* Draw Card Button - Behind Left */}
                 <Button
-                  className="absolute left-[-50px] h-12 w-20 p-0 justify-center bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-lg hover:shadow-xl flex-row items-center gap-2 disabled:opacity-50 transition-all duration-300 transform hover:scale-105 rounded-l-full rounded-r-none z-10"
+                  className="absolute left-[-90px] h-14 w-24 px-3 py-2 justify-center bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold shadow-lg hover:shadow-xl flex-row items-center gap-1 disabled:opacity-50 transition-all duration-300 transform hover:scale-102 disabled:hover:scale-100 rounded-full border-2 border-white/20 z-10"
                   onClick={drawCard}
                   disabled={
                     !players[0]?.isActive ||
@@ -2239,13 +2239,13 @@ function UnoGameInner() {
                             : "Draw a card (Press D)"
                   }
                 >
-                  <Plus className="w-6 h-6 text-white drop-shadow-2xl stroke-2" />
-                  <span className="text-base bg-white text-blue-600 px-2 py-1 rounded-md font-black shadow-2xl border-2 border-blue-600">D</span>
+                  <Plus className="w-5 h-5 text-white drop-shadow-2xl stroke-2" />
+                  <span className="text-sm bg-white text-blue-600 px-2 py-1 rounded-md font-black shadow-2xl border-2 border-blue-600">D</span>
                 </Button>
 
                 {/* UNO Button - Behind Right */}
                 <Button
-                  className="absolute right-[-50px] h-12 w-20 p-0 justify-center bg-red-600 hover:bg-red-700 text-white font-bold shadow-lg hover:shadow-xl flex-row items-center gap-2 transition-all duration-300 transform hover:scale-105 rounded-r-full rounded-l-none disabled:opacity-50 disabled:transform-none z-10"
+                  className="absolute right-[-90px] h-14 w-24 px-3 py-2 justify-center bg-red-600 hover:bg-red-700 active:bg-red-800 text-white font-bold shadow-lg hover:shadow-xl flex-row items-center gap-1 transition-all duration-300 transform hover:scale-102 disabled:hover:scale-100 rounded-full border-2 border-white/20 disabled:opacity-50 disabled:transform-none z-10"
                   onClick={callUno}
                   disabled={!players[0] || players[0].cardCount !== 1}
                   title={
@@ -2256,8 +2256,8 @@ function UnoGameInner() {
                         : "Call UNO! (Press U)"
                   }
                 >
-                  <Zap className="w-6 h-6 text-white drop-shadow-2xl stroke-2" />
-                  <span className="text-base bg-white text-red-600 px-2 py-1 rounded-md font-black shadow-2xl border-2 border-red-600">U</span>
+                  <Zap className="w-5 h-5 text-white drop-shadow-2xl stroke-2" />
+                  <span className="text-sm bg-white text-red-600 px-2 py-1 rounded-md font-black shadow-2xl border-2 border-red-600">U</span>
                 </Button>
 
                 {/* Avatar Center - Positioned above buttons */}
