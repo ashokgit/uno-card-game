@@ -38,6 +38,7 @@ interface Player {
   isNextPlayer: boolean
   position: { top: string; left: string; transform?: string; position?: string }
   cards: GameCard[]
+  score: number
 }
 
 interface GameCard {
@@ -98,6 +99,7 @@ function UnoGameInner() {
   const [showActionConfirm, setShowActionConfirm] = useState<{ card: GameCard; confirmed: () => void } | null>(null)
   const [isDeveloperMode, setIsDeveloperMode] = useState(false)
   const [showMainMenu, setShowMainMenu] = useState(true)
+  const [aiThinking, setAiThinking] = useState<{ playerName: string; startTime: number } | null>(null)
   const [currentRules, setCurrentRules] = useState<UnoRules>({
     stackDrawTwo: false,
     stackDrawFour: false,
@@ -163,10 +165,34 @@ function UnoGameInner() {
     }
   }, [uiSettings.musicVolume])
 
+  // Initialize game engine with event handlers
+  const initializeGameEngine = (playerNames: string[], rules: UnoRules) => {
+    const engine = new GameEngine(playerNames, 0, rules, {
+      onRoundEnd: (winner, points, scores) => {
+        console.log(`🏆 Round ended! ${winner.name} earned ${points} points`)
+        // Update UI immediately when round ends
+        const gameData = convertToUIFormat()
+        setPlayers(gameData.players)
+        setCurrentCard(gameData.currentCard)
+        setDirection(gameData.direction)
+        setCurrentPlayerId(engine.getCurrentPlayer().id)
+      },
+      onGameEnd: (winner, finalScores) => {
+        console.log(`🎉 Game ended! ${winner.name} wins with ${winner.getScore()} points`)
+        // Update UI immediately when game ends
+        const gameData = convertToUIFormat()
+        setPlayers(gameData.players)
+        setCurrentCard(gameData.currentCard)
+        setDirection(gameData.direction)
+        setCurrentPlayerId(engine.getCurrentPlayer().id)
+      }
+    })
+    setGameEngine(engine)
+  }
+
   const startGame = (rules: UnoRules, playerCount: number) => {
     const playerNames = ["You", "Alice", "Bob", "Carol", "Dave", "Eve"].slice(0, playerCount)
-    const engine = new GameEngine(playerNames, 0, rules)
-    setGameEngine(engine)
+    initializeGameEngine(playerNames, rules)
     setCurrentRules(rules)
     setShowMainMenu(false)
   }
@@ -330,6 +356,7 @@ function UnoGameInner() {
         isNextPlayer: nextPlayer.id === player.id,
         position: getPlayerPosition(index),
         cards: index === 0 ? (player.getHand() || []).map(convertEngineCard) : [],
+        score: player.getScore(),
       }
 
       return playerData
@@ -546,8 +573,22 @@ function UnoGameInner() {
         chosenColor = colors[Math.floor(Math.random() * colors.length)]
       }
 
+      console.log("[DEBUG] User card play attempt:")
+      console.log("  - Card:", cardToPlay.color, cardToPlay.value)
+      console.log("  - Top card:", currentCard ? `${currentCard.color} ${currentCard.value}` : 'None')
+      console.log("  - Wild color:", gameEngine.getWildColor())
+      console.log("  - Chosen color:", chosenColor)
+
       const success = gameEngine.playCard("player_0", cardToPlay.id.toString(), chosenColor)
       console.log("[v0] User card play result:", success, "New current player:", gameEngine.getCurrentPlayer().name)
+
+      if (!success) {
+        console.log("[ERROR] User card play failed!")
+        // Don't proceed with turn change if play failed
+        setIsAnimating(false)
+        setPlayDelay(false)
+        return
+      }
 
       if (success) {
         const gameData = convertToUIFormat()
@@ -799,144 +840,299 @@ function UnoGameInner() {
     if (!gameEngine || gameEngine.isGameOver()) return
 
     const currentPlayer = gameEngine.getCurrentPlayer()
+    console.log("[DEBUG] Turn detection - Current player:", currentPlayer.name, "ID:", currentPlayer.id)
+    console.log("[DEBUG] Turn detection - playDelay:", playDelay, "isAITurnAnimating:", isAITurnAnimating)
+
     setCurrentPlayerId(currentPlayer.id)
 
     const isHumanTurn = currentPlayer.name === "You" || currentPlayer.id === "player_0"
+    console.log("[DEBUG] Turn detection - isHumanTurn:", isHumanTurn)
 
-    if (!isHumanTurn && !playDelay) {
+    if (!isHumanTurn && !playDelay && !isAITurnAnimating) {
       console.log("[v0] AI turn starting for:", currentPlayer.name)
+      setAiThinking({ playerName: currentPlayer.name, startTime: Date.now() })
       const timer = setTimeout(() => {
         playAITurn()
-      }, 3500)
+      }, 500) // Reduced from 3500ms to 500ms for faster response
 
       return () => clearTimeout(timer)
+    } else if (!isHumanTurn && !playDelay && isAITurnAnimating) {
+      console.log("[DEBUG] AI turn blocked - already animating for:", currentPlayer.name)
+    } else if (!isHumanTurn && playDelay) {
+      console.log("[DEBUG] AI turn blocked - play delay active")
     }
-  }, [currentPlayerId, playDelay, gameEngine])
+  }, [currentPlayerId, playDelay, gameEngine, isAITurnAnimating])
 
   const playAITurn = () => {
     if (!gameEngine || isAITurnAnimating) return
 
     const currentPlayer = gameEngine.getCurrentPlayer()
     console.log("Playing AI turn for:", currentPlayer.name)
+    console.log("Game state before AI turn:", {
+      currentPlayer: currentPlayer.name,
+      isHuman: currentPlayer.isHuman,
+      handSize: currentPlayer.getHandSize(),
+      gamePhase: gameEngine.getPhase(),
+      isGameOver: gameEngine.isGameOver()
+    })
 
     setIsAITurnAnimating(true)
 
-    // Randomize AI thinking time (0.8 to 2.5 seconds) - reduced from 1.5-4s
-    const thinkingTime = Math.random() * 1700 + 800
+    // Reduced AI thinking time (100 to 500ms) - much faster response
+    const thinkingTime = Math.random() * 400 + 100
     console.log(`AI ${currentPlayer.name} thinking for ${thinkingTime.toFixed(0)}ms`)
 
     // Execute AI turn after thinking time
     setTimeout(() => {
-      // First, determine what the AI will do
-      const topCard = gameEngine.getTopCard()
-      let cardToPlay: GameCard | null = null
-      let chosenWildColor: string | undefined = undefined
-      let shouldDraw = false
+      try {
+        console.log("[DEBUG] AI turn execution starting for:", currentPlayer.name)
 
-      if (topCard) {
-        // Convert topCard to GameCard format for comparison
-        const topGameCard: GameCard = {
-          id: Number.parseInt(topCard.id),
-          color: topCard.color,
-          value: topCard.value,
-          isPlayable: false
-        }
+        // First, determine what the AI will do
+        const topCard = gameEngine.getTopCard()
+        let cardToPlay: GameCard | null = null
+        let chosenWildColor: string | undefined = undefined
+        let shouldDraw = false
 
-        // Find a playable card in AI's hand
-        const aiHand = currentPlayer.getHand()
-        for (const card of aiHand) {
-          const gameCard: GameCard = {
-            id: Number.parseInt(card.id),
-            color: card.color,
-            value: card.value,
+        if (topCard) {
+          // Convert topCard to GameCard format for comparison
+          const topGameCard: GameCard = {
+            id: Number.parseInt(topCard.id),
+            color: topCard.color,
+            value: topCard.value,
             isPlayable: false
           }
 
-          if (canPlayCard(gameCard, topGameCard)) {
-            cardToPlay = gameCard
-            if (card.isWildCard()) {
-              // AI chooses color based on most cards in hand
-              const colorCounts = { red: 0, blue: 0, green: 0, yellow: 0 }
-              aiHand.forEach(c => {
-                if (c.color !== "wild") {
-                  colorCounts[c.color as keyof typeof colorCounts]++
-                }
-              })
-              const maxColor = Object.entries(colorCounts).reduce((a, b) =>
-                colorCounts[a[0] as keyof typeof colorCounts] > colorCounts[b[0] as keyof typeof colorCounts] ? a : b
-              )[0]
-              chosenWildColor = maxColor
+          // Find a playable card in AI's hand
+          const aiHand = currentPlayer.getHand()
+          for (const card of aiHand) {
+            const gameCard: GameCard = {
+              id: Number.parseInt(card.id),
+              color: card.color,
+              value: card.value,
+              isPlayable: false
             }
-            break
+
+            if (canPlayCard(gameCard, topGameCard)) {
+              cardToPlay = gameCard
+              if (card.isWildCard()) {
+                // AI chooses color based on most cards in hand
+                const colorCounts = { red: 0, blue: 0, green: 0, yellow: 0 }
+                aiHand.forEach(c => {
+                  if (c.color !== "wild") {
+                    colorCounts[c.color as keyof typeof colorCounts]++
+                  }
+                })
+                const maxColor = Object.entries(colorCounts).reduce((a, b) =>
+                  colorCounts[a[0] as keyof typeof colorCounts] > colorCounts[b[0] as keyof typeof colorCounts] ? a : b
+                )[0]
+                chosenWildColor = maxColor
+              }
+              break
+            }
+          }
+
+          // If no playable card found, AI should draw
+          if (!cardToPlay) {
+            shouldDraw = true
           }
         }
 
-        // If no playable card found, AI should draw
-        if (!cardToPlay) {
-          shouldDraw = true
+        const currentPlayerIndex = gameEngine.getPlayers().findIndex((p) => p.id === currentPlayer.id)
+        const aiPlayerElement = document.querySelector(`[data-player="${currentPlayerIndex}"]`)
+        const centerElement = document.querySelector("[data-center-pile]")
+        const deckElement = document.querySelector("[data-deck]")
+
+        // Randomize animation durations for more natural feel
+        const getRandomAnimationDuration = (baseDuration: number, variance: number = 0.3) => {
+          const minDuration = baseDuration * (1 - variance)
+          const maxDuration = baseDuration * (1 + variance)
+          return Math.random() * (maxDuration - minDuration) + minDuration
         }
-      }
 
-      const currentPlayerIndex = gameEngine.getPlayers().findIndex((p) => p.id === currentPlayer.id)
-      const aiPlayerElement = document.querySelector(`[data-player="${currentPlayerIndex}"]`)
-      const centerElement = document.querySelector("[data-center-pile]")
-      const deckElement = document.querySelector("[data-deck]")
+        if (aiPlayerElement && centerElement) {
+          if (shouldDraw && deckElement) {
+            // AI needs to draw a card
+            console.log("AI drawing card")
+            playSound("draw")
 
-      // Randomize animation durations for more natural feel
-      const getRandomAnimationDuration = (baseDuration: number, variance: number = 0.3) => {
-        const minDuration = baseDuration * (1 - variance)
-        const maxDuration = baseDuration * (1 + variance)
-        return Math.random() * (maxDuration - minDuration) + minDuration
-      }
+            const aiPlayerRect = aiPlayerElement.getBoundingClientRect()
+            const deckRect = deckElement.getBoundingClientRect()
 
-      if (aiPlayerElement && centerElement) {
-        if (shouldDraw && deckElement) {
-          // AI needs to draw a card
-          console.log("AI drawing card")
-          playSound("draw")
+            // Reduced drawing animation duration (200-400ms)
+            const drawDuration = getRandomAnimationDuration(300, 0.3)
+            const animatedCard: AnimatedCard = {
+              id: Date.now() + currentPlayerIndex,
+              card: { id: Math.random(), color: "red", value: "?", isPlayable: false },
+              startX: deckRect.left + deckRect.width / 2,
+              startY: deckRect.top + deckRect.height / 2,
+              endX: aiPlayerRect.left + aiPlayerRect.width / 2,
+              endY: aiPlayerRect.top + aiPlayerRect.height / 2,
+              currentX: deckRect.left + deckRect.width / 2,
+              currentY: deckRect.top + deckRect.height / 2,
+              isAnimating: true,
+              type: 'draw',
+              rotation: 0,
+              scale: 1,
+              zIndex: 9999,
+              trajectory: 'straight',
+              duration: drawDuration,
+              delay: 0,
+              startTime: Date.now(),
+              // Enhanced physics properties for AI draw
+              velocity: { x: 0, y: 0 },
+              gravity: 0.2,
+              bounce: 0.4,
+              spin: Math.random() * 8 - 4,
+              airResistance: 0.99,
+              maxBounces: 1,
+              bounceCount: 0
+            }
 
-          const aiPlayerRect = aiPlayerElement.getBoundingClientRect()
-          const deckRect = deckElement.getBoundingClientRect()
+            setAnimatedCards((prev) => [...prev, animatedCard])
+            playSound("card-flip")
 
-          // Create drawing animation with randomized duration
-          const drawDuration = getRandomAnimationDuration(800, 0.4) // 480ms to 1120ms - reduced from 1500ms
-          const animatedCard: AnimatedCard = {
-            id: Date.now() + currentPlayerIndex,
-            card: { id: Math.random(), color: "red", value: "?", isPlayable: false },
-            startX: deckRect.left + deckRect.width / 2,
-            startY: deckRect.top + deckRect.height / 2,
-            endX: aiPlayerRect.left + aiPlayerRect.width / 2,
-            endY: aiPlayerRect.top + aiPlayerRect.height / 2,
-            currentX: deckRect.left + deckRect.width / 2,
-            currentY: deckRect.top + deckRect.height / 2,
-            isAnimating: true,
-            type: 'draw',
-            rotation: 0,
-            scale: 1,
-            zIndex: 9999,
-            trajectory: 'straight',
-            duration: drawDuration,
-            delay: 0,
-            startTime: Date.now(),
-            // Enhanced physics properties for AI draw
-            velocity: { x: 0, y: 0 },
-            gravity: 0.2,
-            bounce: 0.4,
-            spin: Math.random() * 8 - 4,
-            airResistance: 0.99,
-            maxBounces: 1,
-            bounceCount: 0
-          }
+            // Reduced draw delay (50-150ms)
+            const drawDelay = drawDuration + Math.random() * 100 + 50
+            setTimeout(() => {
+              // For AI drawing, we need to call drawCard directly since playAITurn would try to make another decision
+              const drawnCard = gameEngine.drawCard(currentPlayer.id)
+              console.log("AI draw result:", drawnCard ? "success" : "failed", "New current player:", gameEngine.getCurrentPlayer().name)
 
-          setAnimatedCards((prev) => [...prev, animatedCard])
-          playSound("card-flip")
+              const gameData = convertToUIFormat()
+              setPlayers(gameData.players)
+              setCurrentCard(gameData.currentCard)
+              setDirection(gameData.direction)
+              setCurrentPlayerId(gameEngine.getCurrentPlayer().id)
+              setIsAITurnAnimating(false)
+              setAiThinking(null)
+            }, drawDelay)
+          } else if (cardToPlay) {
+            // AI will play a card
+            console.log("AI playing card:", cardToPlay)
+            const aiSounds = ["play", "special"] as const
+            const randomSound = aiSounds[Math.floor(Math.random() * aiSounds.length)]
+            playSound(randomSound)
 
-          // Execute AI draw after animation with randomized delay
-          const drawDelay = drawDuration + Math.random() * 200 + 100 // Add 100-300ms buffer
-          setTimeout(() => {
-            // For AI drawing, we need to call drawCard directly since playAITurn would try to make another decision
-            const drawnCard = gameEngine.drawCard(currentPlayer.id)
-            console.log("AI draw result:", drawnCard ? "success" : "failed", "New current player:", gameEngine.getCurrentPlayer().name)
+            const aiPlayerRect = aiPlayerElement.getBoundingClientRect()
+            const centerRect = centerElement.getBoundingClientRect()
+
+            // Reduced card throwing animation duration (400-800ms)
+            const throwDuration = getRandomAnimationDuration(600, 0.3)
+            const animatedCard: AnimatedCard = {
+              id: Date.now() + currentPlayerIndex,
+              card: cardToPlay,
+              startX: aiPlayerRect.left + aiPlayerRect.width / 2,
+              startY: aiPlayerRect.top + aiPlayerRect.height / 2,
+              endX: centerRect.left + centerRect.width / 2,
+              endY: centerRect.top + centerRect.height / 2,
+              currentX: aiPlayerRect.left + aiPlayerRect.width / 2,
+              currentY: aiPlayerRect.top + aiPlayerRect.height / 2,
+              isAnimating: true,
+              type: 'throw',
+              rotation: Math.random() * 720 - 360, // More dramatic rotation for AI
+              scale: 1.5, // Make it bigger for better visibility
+              zIndex: 10000,
+              trajectory: 'arc', // Use arc for more dramatic AI throws
+              duration: throwDuration,
+              delay: 0,
+              startTime: Date.now(),
+              // Enhanced physics properties for AI throw
+              velocity: { x: 0, y: 0 },
+              gravity: 0.6,
+              bounce: 0.8,
+              spin: (Math.random() - 0.5) * 8, // Reduced from 30 to 8 for more subtle rotation
+              airResistance: 0.97,
+              maxBounces: 3,
+              bounceCount: 0
+            }
+
+            setAnimatedCards((prev) => [...prev, animatedCard])
+            playSound("card-flip")
+
+            // Reduced throw delay (100-200ms)
+            const throwDelay = throwDuration + Math.random() * 100 + 100
+            setTimeout(() => {
+              // For AI playing, we need to call playCard directly with the chosen card
+
+              // Add debugging for Wild Draw Four plays
+              if (cardToPlay.color === 'wild' && cardToPlay.value === 'Wild Draw Four') {
+                console.log("[DEBUG] Wild Draw Four play attempt (animation path):")
+                console.log("  - Card:", cardToPlay.color, cardToPlay.value)
+                console.log("  - Player hand:", currentPlayer.getHand().map(c => `${c.color} ${c.value}`))
+                console.log("  - Top card:", gameEngine.getTopCard() ? `${gameEngine.getTopCard()!.color} ${gameEngine.getTopCard()!.value}` : 'None')
+                console.log("  - Wild color:", gameEngine.getWildColor())
+
+                // Check if player has matching color cards
+                const topCard = gameEngine.getTopCard()
+                if (topCard) {
+                  const hasMatchingColor = currentPlayer.getHand().some(c =>
+                    c.color === topCard.color && c.id !== cardToPlay.id.toString()
+                  )
+                  console.log("  - Has matching color cards:", hasMatchingColor)
+                }
+              }
+
+              const success = gameEngine.playCard(currentPlayer.id, cardToPlay.id.toString(), chosenWildColor as UnoColor | undefined)
+              console.log("AI play result:", success, "New current player:", gameEngine.getCurrentPlayer().name)
+
+              if (!success) {
+                console.log("[ERROR] AI action failed - this might cause infinite loop!")
+                // Force AI to draw a card if play fails to prevent infinite loop
+                console.log("[FIX] Forcing AI to draw a card to prevent infinite loop")
+                const drawSuccess = gameEngine.drawCard(currentPlayer.id)
+                console.log("Forced draw result:", drawSuccess ? "success" : "failed")
+              }
+
+              const gameData = convertToUIFormat()
+              setPlayers(gameData.players)
+              setCurrentCard(gameData.currentCard)
+              setDirection(gameData.direction)
+              setCurrentPlayerId(gameEngine.getCurrentPlayer().id)
+              setIsAITurnAnimating(false)
+              setAiThinking(null)
+            }, throwDelay)
+          } else {
+            // Fallback: just execute AI turn without animation
+            console.log("AI turn fallback - no animation")
+
+            // Use synchronous AI decision instead of async playAITurn
+            const decision = gameEngine.decideAITurn()
+            console.log("AI decision:", decision)
+            if (decision) {
+              // Add detailed debugging for Wild Draw Four plays
+              if (decision.action === 'play' && decision.cardId) {
+                const card = currentPlayer.getHand().find(c => c.id === decision.cardId)
+                if (card && card.value === 'Wild Draw Four') {
+                  console.log("[DEBUG] Wild Draw Four play attempt:")
+                  console.log("  - Card:", card.color, card.value)
+                  console.log("  - Player hand:", currentPlayer.getHand().map(c => `${c.color} ${c.value}`))
+                  console.log("  - Top card:", gameEngine.getTopCard() ? `${gameEngine.getTopCard()!.color} ${gameEngine.getTopCard()!.value}` : 'None')
+                  console.log("  - Wild color:", gameEngine.getWildColor())
+
+                  // Check if player has matching color cards
+                  const topCard = gameEngine.getTopCard()
+                  if (topCard) {
+                    const hasMatchingColor = currentPlayer.getHand().some(c =>
+                      c.color === topCard.color && c.id !== decision.cardId
+                    )
+                    console.log("  - Has matching color cards:", hasMatchingColor)
+                  }
+                }
+              }
+
+              const success = gameEngine.applyAIAction(decision)
+              console.log("AI turn result:", success, "New current player:", gameEngine.getCurrentPlayer().name)
+
+              if (!success) {
+                console.log("[ERROR] AI action failed - this might cause infinite loop!")
+                // Force AI to draw a card if play fails to prevent infinite loop
+                console.log("[FIX] Forcing AI to draw a card to prevent infinite loop")
+                const drawSuccess = gameEngine.drawCard(currentPlayer.id)
+                console.log("Forced draw result:", drawSuccess ? "success" : "failed")
+              }
+            } else {
+              console.log("AI could not decide on action")
+            }
 
             const gameData = convertToUIFormat()
             setPlayers(gameData.players)
@@ -944,69 +1140,50 @@ function UnoGameInner() {
             setDirection(gameData.direction)
             setCurrentPlayerId(gameEngine.getCurrentPlayer().id)
             setIsAITurnAnimating(false)
-          }, drawDelay)
-        } else if (cardToPlay) {
-          // AI will play a card
-          console.log("AI playing card:", cardToPlay)
-          const aiSounds = ["play", "special"] as const
-          const randomSound = aiSounds[Math.floor(Math.random() * aiSounds.length)]
-          playSound(randomSound)
-
-          const aiPlayerRect = aiPlayerElement.getBoundingClientRect()
-          const centerRect = centerElement.getBoundingClientRect()
-
-          // Create AI card throwing animation with randomized duration
-          const throwDuration = getRandomAnimationDuration(1800, 0.5) // 900ms to 2700ms - reduced from 3000ms
-          const animatedCard: AnimatedCard = {
-            id: Date.now() + currentPlayerIndex,
-            card: cardToPlay,
-            startX: aiPlayerRect.left + aiPlayerRect.width / 2,
-            startY: aiPlayerRect.top + aiPlayerRect.height / 2,
-            endX: centerRect.left + centerRect.width / 2,
-            endY: centerRect.top + centerRect.height / 2,
-            currentX: aiPlayerRect.left + aiPlayerRect.width / 2,
-            currentY: aiPlayerRect.top + aiPlayerRect.height / 2,
-            isAnimating: true,
-            type: 'throw',
-            rotation: Math.random() * 720 - 360, // More dramatic rotation for AI
-            scale: 1.5, // Make it bigger for better visibility
-            zIndex: 10000,
-            trajectory: 'arc', // Use arc for more dramatic AI throws
-            duration: throwDuration,
-            delay: 0,
-            startTime: Date.now(),
-            // Enhanced physics properties for AI throw
-            velocity: { x: 0, y: 0 },
-            gravity: 0.6,
-            bounce: 0.8,
-            spin: (Math.random() - 0.5) * 8, // Reduced from 30 to 8 for more subtle rotation
-            airResistance: 0.97,
-            maxBounces: 3,
-            bounceCount: 0
+            setAiThinking(null)
           }
-
-          setAnimatedCards((prev) => [...prev, animatedCard])
-          playSound("card-flip")
-
-          // Execute AI play after animation with randomized delay
-          const throwDelay = throwDuration + Math.random() * 300 + 200 // Add 200-500ms buffer
-          setTimeout(() => {
-            // For AI playing, we need to call playCard directly with the chosen card
-            const success = gameEngine.playCard(currentPlayer.id, cardToPlay.id.toString(), chosenWildColor as UnoColor | undefined)
-            console.log("AI play result:", success, "New current player:", gameEngine.getCurrentPlayer().name)
-
-            const gameData = convertToUIFormat()
-            setPlayers(gameData.players)
-            setCurrentCard(gameData.currentCard)
-            setDirection(gameData.direction)
-            setCurrentPlayerId(gameEngine.getCurrentPlayer().id)
-            setIsAITurnAnimating(false)
-          }, throwDelay)
         } else {
           // Fallback: just execute AI turn without animation
-          console.log("AI turn fallback - no animation")
-          const success = gameEngine.playAITurn()
-          console.log("AI turn result:", success, "New current player:", gameEngine.getCurrentPlayer().name)
+          console.log("AI turn fallback - no DOM elements")
+
+          // Use synchronous AI decision instead of async playAITurn
+          const decision = gameEngine.decideAITurn()
+          console.log("AI decision:", decision)
+          if (decision) {
+            // Add detailed debugging for Wild Draw Four plays
+            if (decision.action === 'play' && decision.cardId) {
+              const card = currentPlayer.getHand().find(c => c.id === decision.cardId)
+              if (card && card.value === 'Wild Draw Four') {
+                console.log("[DEBUG] Wild Draw Four play attempt:")
+                console.log("  - Card:", card.color, card.value)
+                console.log("  - Player hand:", currentPlayer.getHand().map(c => `${c.color} ${c.value}`))
+                console.log("  - Top card:", gameEngine.getTopCard() ? `${gameEngine.getTopCard()!.color} ${gameEngine.getTopCard()!.value}` : 'None')
+                console.log("  - Wild color:", gameEngine.getWildColor())
+
+                // Check if player has matching color cards
+                const topCard = gameEngine.getTopCard()
+                if (topCard) {
+                  const hasMatchingColor = currentPlayer.getHand().some(c =>
+                    c.color === topCard.color && c.id !== decision.cardId
+                  )
+                  console.log("  - Has matching color cards:", hasMatchingColor)
+                }
+              }
+            }
+
+            const success = gameEngine.applyAIAction(decision)
+            console.log("AI turn result:", success, "New current player:", gameEngine.getCurrentPlayer().name)
+
+            if (!success) {
+              console.log("[ERROR] AI action failed - this might cause infinite loop!")
+              // Force AI to draw a card if play fails to prevent infinite loop
+              console.log("[FIX] Forcing AI to draw a card to prevent infinite loop")
+              const drawSuccess = gameEngine.drawCard(currentPlayer.id)
+              console.log("Forced draw result:", drawSuccess ? "success" : "failed")
+            }
+          } else {
+            console.log("AI could not decide on action")
+          }
 
           const gameData = convertToUIFormat()
           setPlayers(gameData.players)
@@ -1014,31 +1191,43 @@ function UnoGameInner() {
           setDirection(gameData.direction)
           setCurrentPlayerId(gameEngine.getCurrentPlayer().id)
           setIsAITurnAnimating(false)
+          setAiThinking(null)
         }
-      } else {
-        // Fallback: just execute AI turn without animation
-        console.log("AI turn fallback - no DOM elements")
-        const success = gameEngine.playAITurn()
-        console.log("AI turn result:", success, "New current player:", gameEngine.getCurrentPlayer().name)
-
-        const gameData = convertToUIFormat()
-        setPlayers(gameData.players)
-        setCurrentCard(gameData.currentCard)
-        setDirection(gameData.direction)
-        setCurrentPlayerId(gameEngine.getCurrentPlayer().id)
+      } catch (error) {
+        console.error("[ERROR] AI turn execution failed:", error)
         setIsAITurnAnimating(false)
+        setAiThinking(null)
       }
     }, thinkingTime) // Close the setTimeout with thinking time
   }
 
   const canPlayCard = (card: GameCard, topCard: GameCard): boolean => {
-    if (card.color === "wild") return true
+    console.log("[DEBUG] canPlayCard check:")
+    console.log("  - Card:", card.color, card.value)
+    console.log("  - Top card:", topCard.color, topCard.value)
+    console.log("  - Wild color:", gameEngine?.getWildColor())
 
-    if (gameEngine?.getWildColor() && card.color === gameEngine.getWildColor()) return true
+    if (card.color === "wild") {
+      console.log("  - Result: true (wild card)")
+      return true
+    }
 
-    if (card.color === topCard.color) return true
-    if (card.value === topCard.value && typeof card.value === typeof topCard.value) return true
+    if (gameEngine?.getWildColor() && card.color === gameEngine.getWildColor()) {
+      console.log("  - Result: true (matches wild color)")
+      return true
+    }
 
+    if (card.color === topCard.color) {
+      console.log("  - Result: true (matches color)")
+      return true
+    }
+
+    if (card.value === topCard.value && typeof card.value === typeof topCard.value) {
+      console.log("  - Result: true (matches value)")
+      return true
+    }
+
+    console.log("  - Result: false (no match)")
     return false
   }
 
@@ -1565,7 +1754,7 @@ function UnoGameInner() {
         <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-50">
           <Card className="p-8 bg-gradient-to-r from-yellow-400 to-orange-500 text-black text-center shadow-2xl">
             <h2 className="text-4xl font-bold mb-4 font-gaming">🎉 Game Over! 🎉</h2>
-            <p className="text-2xl font-semibold mb-6 font-gaming-secondary">{gameEngine.getRoundWinner()?.name || 'Unknown'} Wins!</p>
+            <p className="text-2xl font-semibold mb-6 font-gaming-secondary">{gameEngine.getRoundWinner()?.name || 'Unknown'} {(gameEngine.getRoundWinner()?.name === 'You' || gameEngine.getRoundWinner()?.name === 'Unknown') ? 'Win!' : 'Wins!'}</p>
             <div className="flex gap-4 justify-center">
               <Button onClick={() => window.location.reload()} className="bg-black text-white hover:bg-gray-800 font-gaming-secondary">
                 Play Again
@@ -1947,6 +2136,13 @@ function UnoGameInner() {
                     <div className="w-2 h-2 bg-blue-600 rounded-full m-1"></div>
                   </div>
                 )}
+
+                {/* AI Thinking indicator */}
+                {aiThinking && aiThinking.playerName === player.name && (
+                  <div className="absolute -top-3 -right-3 w-8 h-8 bg-purple-500 rounded-full flex items-center justify-center animate-spin">
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full"></div>
+                  </div>
+                )}
               </div>
 
               {/* Enhanced player info */}
@@ -1957,6 +2153,9 @@ function UnoGameInner() {
                 `}>
                   {player.name}
                   {player.isActive && <span className="ml-2 text-yellow-200 crown-animation">👑</span>}
+                  {aiThinking && aiThinking.playerName === player.name && (
+                    <span className="ml-2 text-purple-300 animate-pulse">🤔</span>
+                  )}
                 </p>
                 <Badge className={`
                   transition-all duration-300
@@ -1966,6 +2165,17 @@ function UnoGameInner() {
                   }
                 `}>
                   {player.cardCount} {player.cardCount === 1 ? 'card' : 'cards'}
+                </Badge>
+                {/* Score display */}
+                <Badge className={`
+                  mt-1 transition-all duration-300
+                  ${player.isActive
+                    ? "bg-green-500 text-white font-bold"
+                    : "bg-blue-500/70 text-white/90"
+                  }
+                `}>
+                  <Trophy className="w-3 h-3 mr-1" />
+                  {player.score} pts
                 </Badge>
                 {player.cardCount === 1 && !player.isActive && (
                   <div className="mt-1">
@@ -2063,6 +2273,17 @@ function UnoGameInner() {
                   }
                 `}>
                   {players[0].cardCount} {players[0].cardCount === 1 ? 'card' : 'cards'}
+                </Badge>
+                {/* Score display for current player */}
+                <Badge className={`
+                  mt-1 transition-all duration-300
+                  ${players[0].isActive
+                    ? "bg-green-500 text-white font-bold"
+                    : "bg-blue-500/70 text-white/90"
+                  }
+                `}>
+                  <Trophy className="w-3 h-3 mr-1" />
+                  {players[0].score} pts
                 </Badge>
               </div>
             </div>
@@ -2259,6 +2480,222 @@ function UnoGameInner() {
           {gameEngine.getDiscardPile().length === 0 && (
             <p className="text-white/70 text-center mt-8">Discard pile is empty</p>
           )}
+        </div>
+      )}
+
+      {/* Debug Panel - Only visible in developer mode */}
+      {isDeveloperMode && (
+        <div className="fixed top-4 right-4 bg-black/80 text-white p-4 rounded-lg z-50">
+          <h3 className="font-bold mb-2">Debug Panel</h3>
+          <div className="space-y-2 text-xs">
+            <div>Game Engine: {gameEngine ? "Active" : "Null"}</div>
+            <div>Current Player: {gameEngine?.getCurrentPlayer()?.name || "None"}</div>
+            <div>Game Phase: {gameEngine?.getPhase() || "None"}</div>
+            <div>Is Game Over: {gameEngine?.isGameOver() ? "Yes" : "No"}</div>
+            <div>AI Thinking: {aiThinking ? `${aiThinking.playerName} (${Date.now() - aiThinking.startTime}ms)` : "None"}</div>
+            <div>AI Turn Animating: {isAITurnAnimating ? "Yes" : "No"}</div>
+            <div>Play Delay: {playDelay ? "Yes" : "No"}</div>
+          </div>
+          <Button
+            size="sm"
+            className="mt-2 w-full"
+            onClick={() => {
+              if (gameEngine) {
+                console.log("=== DEBUG GAME STATE ===")
+                console.log("Current Player:", gameEngine.getCurrentPlayer())
+                console.log("Game Phase:", gameEngine.getPhase())
+                console.log("Is Game Over:", gameEngine.isGameOver())
+                console.log("Players:", gameEngine.getPlayers().map(p => ({ name: p.name, handSize: p.getHandSize(), isHuman: p.isHuman })))
+                console.log("Top Card:", gameEngine.getTopCard())
+                console.log("Direction:", gameEngine.getDirection())
+                console.log("Draw Penalty:", gameEngine.getDrawPenalty())
+                console.log("Skip Next:", gameEngine.getState().gameState.skipNext)
+                console.log("========================")
+              }
+            }}
+          >
+            Log Game State
+          </Button>
+          <Button
+            size="sm"
+            className="mt-2 w-full"
+            onClick={() => {
+              if (gameEngine) {
+                console.log("=== FORCING AI TURN ===")
+                const currentPlayer = gameEngine.getCurrentPlayer()
+                console.log("Current player before force:", currentPlayer.name)
+                const decision = gameEngine.decideAITurn()
+                console.log("AI decision:", decision)
+                if (decision) {
+                  const success = gameEngine.applyAIAction(decision)
+                  console.log("Force AI turn result:", success)
+                  const gameData = convertToUIFormat()
+                  setPlayers(gameData.players)
+                  setCurrentCard(gameData.currentCard)
+                  setDirection(gameData.direction)
+                  setCurrentPlayerId(gameEngine.getCurrentPlayer().id)
+                  setIsAITurnAnimating(false)
+                  setAiThinking(null)
+                }
+              }
+            }}
+          >
+            Force AI Turn
+          </Button>
+          <Button
+            size="sm"
+            className="mt-2 w-full"
+            onClick={() => {
+              if (gameEngine) {
+                console.log("=== CONTINUE GAME ===")
+                // Reset any stuck states
+                setIsAITurnAnimating(false)
+                setAiThinking(null)
+                setPlayDelay(false)
+
+                // Force a turn change if needed
+                const currentPlayer = gameEngine.getCurrentPlayer()
+                console.log("Current player:", currentPlayer.name)
+
+                // Trigger the turn detection useEffect
+                setCurrentPlayerId(currentPlayer.id)
+              }
+            }}
+          >
+            Continue Game
+          </Button>
+          <Button
+            size="sm"
+            className="mt-2 w-full"
+            onClick={() => {
+              if (gameEngine) {
+                console.log("=== MANUAL TURN ADVANCE ===")
+                // Force the game engine to advance to the next turn
+                const currentPlayer = gameEngine.getCurrentPlayer()
+                console.log("Current player before advance:", currentPlayer.name)
+
+                // Try to manually trigger the next turn
+                const players = gameEngine.getPlayers()
+                const currentIndex = players.findIndex(p => p.id === currentPlayer.id)
+                const nextIndex = (currentIndex + 1) % players.length
+                const nextPlayer = players[nextIndex]
+
+                console.log("Next player should be:", nextPlayer.name)
+
+                // Force the turn change by updating the current player ID
+                setCurrentPlayerId(nextPlayer.id)
+
+                // Reset states
+                setIsAITurnAnimating(false)
+                setAiThinking(null)
+                setPlayDelay(false)
+              }
+            }}
+          >
+            Manual Turn Advance
+          </Button>
+          <Button
+            size="sm"
+            className="mt-2 w-full"
+            onClick={() => {
+              if (gameEngine) {
+                console.log("=== CHECK TURN PROGRESSION ===")
+                const state = gameEngine.getState()
+                console.log("Current player index:", state.currentPlayer.turnOrder)
+                console.log("Skip next:", state.gameState.skipNext)
+                console.log("Direction:", state.gameState.direction)
+                console.log("Phase:", state.gameState.phase)
+
+                // Calculate who should be next
+                const players = gameEngine.getPlayers()
+                const currentIndex = state.currentPlayer.turnOrder
+                const direction = state.gameState.direction
+                const skipNext = state.gameState.skipNext
+
+                let nextIndex = currentIndex
+                if (skipNext) {
+                  nextIndex = direction === "clockwise" ? (currentIndex + 2) % players.length : (currentIndex - 2 + players.length) % players.length
+                } else {
+                  nextIndex = direction === "clockwise" ? (currentIndex + 1) % players.length : (currentIndex - 1 + players.length) % players.length
+                }
+
+                console.log("Next player should be:", players[nextIndex].name)
+                console.log("Current player is:", players[currentIndex].name)
+
+                if (players[nextIndex].name === players[currentIndex].name) {
+                  console.log("⚠️ TURN PROGRESSION ISSUE: Next player is same as current!")
+                }
+              }
+            }}
+          >
+            Check Turn Progression
+          </Button>
+          <Button
+            size="sm"
+            className="mt-2 w-full"
+            onClick={() => {
+              if (gameEngine) {
+                console.log("=== FORCE UI SYNC ===")
+                // Force the UI to sync with the game engine state
+                const gameData = convertToUIFormat()
+                setPlayers(gameData.players)
+                setCurrentCard(gameData.currentCard)
+                setDirection(gameData.direction)
+                setCurrentPlayerId(gameEngine.getCurrentPlayer().id)
+
+                // Reset any stuck states
+                setIsAITurnAnimating(false)
+                setAiThinking(null)
+                setPlayDelay(false)
+
+                console.log("UI synced with game engine")
+                console.log("Current player:", gameEngine.getCurrentPlayer().name)
+              }
+            }}
+          >
+            Force UI Sync
+          </Button>
+          <Button
+            size="sm"
+            className="mt-2 w-full"
+            onClick={() => {
+              if (gameEngine) {
+                console.log("=== CHECK PLAYABLE CARDS ===")
+                const currentPlayer = gameEngine.getCurrentPlayer()
+                const topCard = gameEngine.getTopCard()
+
+                console.log("Current player:", currentPlayer.name)
+                console.log("Top card:", topCard ? `${topCard.color} ${topCard.value}` : 'None')
+                console.log("Wild color:", gameEngine.getWildColor())
+                console.log("Player hand:", currentPlayer.getHand().map(c => `${c.color} ${c.value}`))
+
+                if (topCard) {
+                  const playableCards = currentPlayer.getPlayableCards(topCard, gameEngine.getWildColor() || undefined)
+                  console.log("Playable cards:", playableCards.map(c => `${c.color} ${c.value}`))
+
+                  // Check each card with canPlayCard
+                  currentPlayer.getHand().forEach(card => {
+                    const gameCard: GameCard = {
+                      id: Number.parseInt(card.id),
+                      color: card.color,
+                      value: card.value,
+                      isPlayable: false
+                    }
+                    const topGameCard: GameCard = {
+                      id: Number.parseInt(topCard.id),
+                      color: topCard.color,
+                      value: topCard.value,
+                      isPlayable: false
+                    }
+                    const canPlay = canPlayCard(gameCard, topGameCard)
+                    console.log(`  ${card.color} ${card.value}: canPlayCard = ${canPlay}, engine says = ${playableCards.some(c => c.id === card.id)}`)
+                  })
+                }
+              }
+            }}
+          >
+            Check Playable Cards
+          </Button>
         </div>
       )}
     </div>
