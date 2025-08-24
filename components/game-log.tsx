@@ -34,7 +34,7 @@ interface GameLogProps {
 interface LogEntry {
     id: string
     timestamp: number
-    type: 'action' | 'turn' | 'event' | 'stat'
+    type: 'action' | 'turn' | 'event' | 'stat' | 'state'
     message: string
     player?: string
     data?: any
@@ -61,7 +61,7 @@ export function GameLog({
     })
     const scrollAreaRef = useRef<HTMLDivElement>(null)
     const [copied, setCopied] = useState(false)
-    const [debugMode, setDebugMode] = useState(false)
+    const [debugMode, setDebugMode] = useState(true) // Enable debug mode by default for testing
     const [processedEventCount, setProcessedEventCount] = useState(0)
 
     // Auto-scroll to bottom when new logs are added
@@ -128,18 +128,42 @@ export function GameLog({
                         data: card
                     })
 
-                    // Debug logging for AI decisions
+                    // Enhanced AI decision logging
                     if (debugMode && player && !player.isHuman && gameEngine) {
                         const playerObj = gameEngine.getPlayers().find(p => p.id === player.id)
                         if (playerObj) {
                             const handSize = playerObj.getHandSize()
-                            const playableCards = playerObj.getPlayableCards(card, gameEngine.getWildColor() || undefined)
-                            addLog({
-                                type: 'stat',
-                                message: `🐛 ${player.name} had ${handSize} cards, ${playableCards.length} playable`,
-                                player: player.name
-                            })
+                            const topCard = gameEngine.getTopCard()
+                            const wildColor = gameEngine.getWildColor()
+
+                            if (topCard) {
+                                const playableCards = playerObj.getPlayableCards(topCard, wildColor || undefined)
+                                addLog({
+                                    type: 'stat',
+                                    message: `🤖 ${player.name} AI: ${handSize} cards, ${playableCards.length} playable, chose ${card.color} ${card.value}`,
+                                    player: player.name,
+                                    data: {
+                                        handSize,
+                                        playableCount: playableCards.length,
+                                        chosenCard: `${card.color} ${card.value}`,
+                                        playableCards: playableCards.map(c => `${c.color} ${c.value}`)
+                                    }
+                                })
+                            }
                         }
+                    }
+
+                    // Log deck state after card play
+                    if (debugMode && gameEngine) {
+                        const deckCount = gameEngine.getDeckCount()
+                        const discardCount = gameEngine.getDiscardPile().length
+                        const topCard = gameEngine.getTopCard()
+
+                        addLog({
+                            type: 'state',
+                            message: `📊 Deck after play: ${deckCount} cards | Discard: ${discardCount} cards | Top: ${topCard ? `${topCard.color} ${topCard.value}` : 'None'}`,
+                            data: { deckCount, discardCount, topCard: topCard ? `${topCard.color} ${topCard.value}` : 'None' }
+                        })
                     }
                     break
 
@@ -148,11 +172,67 @@ export function GameLog({
                         ...prev,
                         cardsDrawn: prev.cardsDrawn + 1,
                     }))
+
+                    const drawnPlayer = event.data[0]
+                    const drawnCard = event.data[1]
+                    const autoPlayed = event.data[2]
+
+                    let drawMessage = `${drawnPlayer?.name || 'Unknown'} drew a card`
+                    if (drawnCard) {
+                        drawMessage = `${drawnPlayer?.name || 'Unknown'} drew ${drawnCard.color} ${drawnCard.value}`
+                    }
+                    if (autoPlayed) {
+                        drawMessage += ' (auto-played)'
+                    }
+
                     addLog({
                         type: 'action',
-                        message: `${event.data[0]?.name || 'Unknown'} drew a card${event.data[2] ? ' (auto-played)' : ''}`,
-                        player: event.data[0]?.name
+                        message: drawMessage,
+                        player: drawnPlayer?.name,
+                        data: { card: drawnCard, autoPlayed }
                     })
+
+                    // Add detailed hand update if debug mode is enabled
+                    if (debugMode && drawnPlayer && gameEngine) {
+                        const playerObj = gameEngine.getPlayers().find(p => p.id === drawnPlayer.id)
+                        if (playerObj) {
+                            const handCards = playerObj.getHand().map(c => `${c.color} ${c.value}`)
+                            addLog({
+                                type: 'state',
+                                message: `📋 ${drawnPlayer.name} hand after draw: [${handCards.join(', ')}]`,
+                                player: drawnPlayer.name,
+                                data: { handSize: playerObj.getHandSize(), cards: handCards }
+                            })
+                        }
+                    }
+
+                    // Enhanced AI draw logging
+                    if (debugMode && drawnPlayer && !drawnPlayer.isHuman && gameEngine) {
+                        const playerObj = gameEngine.getPlayers().find(p => p.id === drawnPlayer.id)
+                        if (playerObj) {
+                            const handSize = playerObj.getHandSize()
+                            const topCard = gameEngine.getTopCard()
+                            const wildColor = gameEngine.getWildColor()
+
+                            if (topCard && drawnCard) {
+                                const playableCards = playerObj.getPlayableCards(topCard, wildColor || undefined)
+                                const drawnCardPlayable = drawnCard.canPlayOn(topCard, wildColor || undefined, [])
+
+                                addLog({
+                                    type: 'stat',
+                                    message: `🤖 ${drawnPlayer.name} AI drew ${drawnCard.color} ${drawnCard.value} (playable: ${drawnCardPlayable}) - now has ${handSize} cards, ${playableCards.length} playable`,
+                                    player: drawnPlayer.name,
+                                    data: {
+                                        drawnCard: `${drawnCard.color} ${drawnCard.value}`,
+                                        isPlayable: drawnCardPlayable,
+                                        handSize,
+                                        playableCount: playableCards.length,
+                                        playableCards: playableCards.map(c => `${c.color} ${c.value}`)
+                                    }
+                                })
+                            }
+                        }
+                    }
                     break
 
                 case 'onTurnChange':
@@ -179,6 +259,91 @@ export function GameLog({
                         player: turnPlayer?.name,
                         data: { direction }
                     })
+
+                    // Add detailed player state log if debug mode is enabled
+                    if (debugMode && gameEngine) {
+                        const topCard = gameEngine.getTopCard()
+                        const wildColor = gameEngine.getWildColor()
+
+                        // Log current player's hand and playable cards
+                        if (turnPlayer) {
+                            const playerObj = gameEngine.getPlayers().find(p => p.id === turnPlayer.id)
+                            if (playerObj && topCard) {
+                                const handCards = playerObj.getHand().map(c => `${c.color} ${c.value}`)
+                                const playableCards = playerObj.getPlayableCards(topCard, wildColor || undefined)
+                                    .map(c => `${c.color} ${c.value}`)
+
+                                addLog({
+                                    type: 'state',
+                                    message: `📋 ${turnPlayer.name}: ${playerObj.getHandSize()} cards [${handCards.join(', ')}]`,
+                                    player: turnPlayer.name,
+                                    data: { handSize: playerObj.getHandSize(), cards: handCards }
+                                })
+
+                                if (playableCards.length > 0) {
+                                    addLog({
+                                        type: 'state',
+                                        message: `🎯 ${turnPlayer.name} can play: [${playableCards.join(', ')}]`,
+                                        player: turnPlayer.name,
+                                        data: { playableCards }
+                                    })
+                                } else {
+                                    addLog({
+                                        type: 'state',
+                                        message: `❌ ${turnPlayer.name} has no playable cards - must draw`,
+                                        player: turnPlayer.name,
+                                        data: { playableCards: [] }
+                                    })
+
+                                    // Enhanced AI no-playable-cards logging
+                                    if (!turnPlayer.isHuman) {
+                                        addLog({
+                                            type: 'stat',
+                                            message: `🤖 ${turnPlayer.name} AI: No playable cards, must draw from deck`,
+                                            player: turnPlayer.name,
+                                            data: {
+                                                handSize: playerObj.getHandSize(),
+                                                handCards: handCards,
+                                                topCard: `${topCard.color} ${topCard.value}`,
+                                                wildColor: wildColor
+                                            }
+                                        })
+                                    }
+
+                                    // Log deck state when player has no playable cards
+                                    if (debugMode && gameEngine) {
+                                        const deckCount = gameEngine.getDeckCount()
+                                        const discardCount = gameEngine.getDiscardPile().length
+
+                                        if (deckCount === 0) {
+                                            addLog({
+                                                type: 'state',
+                                                message: `⚠️ WARNING: Deck is empty (${discardCount} cards in discard pile) - ${turnPlayer.name} cannot draw!`,
+                                                data: { deckCount, discardCount, player: turnPlayer.name }
+                                            })
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Log game state summary
+                        const allPlayers = gameEngine.getPlayers()
+                        const handSizes = allPlayers.map(p => `${p.name}: ${p.getHandSize()}`).join(', ')
+                        const deckCount = gameEngine.getDeckCount()
+                        const discardCount = gameEngine.getDiscardPile().length
+
+                        addLog({
+                            type: 'state',
+                            message: `📊 Game State: ${handSizes} | Deck: ${deckCount} | Discard: ${discardCount} | Top: ${topCard ? `${topCard.color} ${topCard.value}` : 'None'}`,
+                            data: {
+                                handSizes: allPlayers.map(p => ({ name: p.name, handSize: p.getHandSize() })),
+                                deckCount,
+                                discardCount,
+                                topCard: topCard ? `${topCard.color} ${topCard.value}` : 'None'
+                            }
+                        })
+                    }
                     break
 
                 case 'onUnoCalled':
@@ -205,21 +370,61 @@ export function GameLog({
                     })
                     break
 
-                case 'onActionCardPlayed':
-                    const effect = event.data[2] || 'Action card effect'
-                    const actionPlayer = event.data[0]?.name || 'Unknown'
-                    addLog({
-                        type: 'event',
-                        message: `⚡ ${actionPlayer}: ${effect}`,
-                        player: actionPlayer
-                    })
-                    break
+
 
                 case 'onDeckReshuffled':
                     addLog({
                         type: 'event',
                         message: `🔄 Deck reshuffled (${event.data[0]} cards remaining)`,
                     })
+
+                    // Add detailed deck state if debug mode is enabled
+                    if (debugMode && gameEngine) {
+                        const deckCount = gameEngine.getDeckCount()
+                        const discardCount = gameEngine.getDiscardPile().length
+                        const topCard = gameEngine.getTopCard()
+
+                        addLog({
+                            type: 'state',
+                            message: `📊 Deck State: ${deckCount} cards | Discard: ${discardCount} cards | Top: ${topCard ? `${topCard.color} ${topCard.value}` : 'None'}`,
+                            data: { deckCount, discardCount, topCard: topCard ? `${topCard.color} ${topCard.value}` : 'None' }
+                        })
+                    }
+                    break
+
+                case 'onActionCardPlayed':
+                    // Log action card effects
+                    const actionCardPlayer = event.data[0]
+                    const actionCardData = event.data[1]
+                    const actionEffect = event.data[2]
+
+                    addLog({
+                        type: 'event',
+                        message: `⚡ ${actionCardPlayer?.name || 'Unknown'}: ${actionEffect}`,
+                        player: actionCardPlayer?.name,
+                        data: { card: actionCardData, effect: actionEffect }
+                    })
+
+                    // Log deck state after action card
+                    if (debugMode && gameEngine) {
+                        const deckCount = gameEngine.getDeckCount()
+                        const discardCount = gameEngine.getDiscardPile().length
+                        const topCard = gameEngine.getTopCard()
+                        const drawPenalty = gameEngine.getDrawPenalty()
+                        const skipNext = gameEngine.getState().gameState.skipNext
+
+                        addLog({
+                            type: 'state',
+                            message: `📊 After action: Deck ${deckCount} | Discard ${discardCount} | Top ${topCard ? `${topCard.color} ${topCard.value}` : 'None'} | Penalty ${drawPenalty} | Skip ${skipNext}`,
+                            data: {
+                                deckCount,
+                                discardCount,
+                                topCard: topCard ? `${topCard.color} ${topCard.value}` : 'None',
+                                drawPenalty,
+                                skipNext
+                            }
+                        })
+                    }
                     break
             }
         })
@@ -281,6 +486,7 @@ Game Statistics:
             case 'turn': return '🔄'
             case 'event': return '⚡'
             case 'stat': return '📊'
+            case 'state': return '📋'
             default: return '📝'
         }
     }
@@ -291,6 +497,7 @@ Game Statistics:
             case 'turn': return 'text-green-300'
             case 'event': return 'text-yellow-300'
             case 'stat': return 'text-purple-300'
+            case 'state': return 'text-cyan-300'
             default: return 'text-gray-300'
         }
     }
@@ -330,6 +537,11 @@ Game Statistics:
                             <div className="flex items-center gap-2">
                                 <Activity className="w-5 h-5 text-white" />
                                 <span className="text-white text-lg font-semibold">Game Log</span>
+                                {debugMode && (
+                                    <Badge variant="secondary" className="text-xs bg-green-500/20 text-green-400 border-green-500/30">
+                                        DEBUG
+                                    </Badge>
+                                )}
                             </div>
                             <div className="flex items-center gap-1">
                                 <Button
@@ -410,6 +622,12 @@ Game Statistics:
                                         <span className="text-white/70">Challenges:</span>
                                         <span className="text-orange-300 font-semibold">{stats.challenges}</span>
                                     </div>
+                                    {debugMode && (
+                                        <div className="flex justify-between">
+                                            <span className="text-green-400/70">Debug Mode:</span>
+                                            <span className="text-green-400 font-semibold">ON</span>
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* Current Game State */}
