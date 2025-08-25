@@ -437,6 +437,10 @@ export class UnoGame {
   private consecutiveSkips = 0 // Track consecutive skips to detect deadlock
   private lastPlayerWhoSkipped: string | null = null // Track who last skipped to detect full cycle
   private turnCount = 0 // Track total turns for timeout mechanism
+  // Enhanced state-based deadlock detection
+  private gameStateHistory: string[] = [] // Store recent game state hashes
+  private readonly MAX_STATE_HISTORY = 20 // Maximum number of states to track
+  private readonly DEADLOCK_CYCLE_THRESHOLD = 3 // Number of times a state must repeat to indicate deadlock
 
   constructor(playerNames: string[], humanPlayerIndex = 0, rules: Partial<UnoRules> = {}, events: UnoGameEvents = {}) {
     this.rules = { ...DEFAULT_RULES, ...rules }
@@ -1315,6 +1319,9 @@ export class UnoGame {
     this.turnCount++
     this.debugLog('TURN', `Turn counter incremented to ${this.turnCount}`)
 
+    // Update game state history for enhanced deadlock detection
+    this.updateGameStateHistory()
+
     this.phase = "playing"
     this.emitEvent("onTurnChange", current, this.direction)
 
@@ -1426,6 +1433,9 @@ export class UnoGame {
     isDeadlock: boolean;
     deckCount: number;
     discardPileCount: number;
+    stateHistoryLength: number;
+    currentStateHash: string;
+    stateCycleDetected: boolean;
   } {
     return {
       consecutiveSkips: this.consecutiveSkips,
@@ -1434,6 +1444,9 @@ export class UnoGame {
       isDeadlock: this.isDeadlock(),
       deckCount: this.deck.getRemainingCount(),
       discardPileCount: this.deck.getDiscardPile().length,
+      stateHistoryLength: this.gameStateHistory.length,
+      currentStateHash: this.gameStateHistory.length > 0 ? this.gameStateHistory[this.gameStateHistory.length - 1] : 'none',
+      stateCycleDetected: this.detectStateCycle(),
     }
   }
 
@@ -1466,6 +1479,9 @@ export class UnoGame {
       consecutiveSkips: number;
       isDeadlock: boolean;
       lastPlayerWhoSkipped: string | null;
+      stateHistoryLength: number;
+      currentStateHash: string;
+      stateCycleDetected: boolean;
     };
   } {
     const topCard = this.getTopCard()
@@ -1526,6 +1542,9 @@ export class UnoGame {
     console.log(`Discard Pile: ${stats.deckInfo.discardPileCount} cards`)
     console.log(`Consecutive Skips: ${stats.deadlockInfo.consecutiveSkips}`)
     console.log(`Is Deadlock: ${stats.deadlockInfo.isDeadlock}`)
+    console.log(`State History Length: ${stats.deadlockInfo.stateHistoryLength}`)
+    console.log(`Current State Hash: ${stats.deadlockInfo.currentStateHash}`)
+    console.log(`State Cycle Detected: ${stats.deadlockInfo.stateCycleDetected}`)
 
     console.log('\n=== PLAYER DETAILS ===')
     stats.playerDetails.forEach(player => {
@@ -1545,9 +1564,76 @@ export class UnoGame {
     console.log('================================\n')
   }
 
+  // Generate a hash representing the current strategic game state
+  // This focuses on the strategic aspects that matter for deadlock detection:
+  // - Player hand sizes (sorted to be order-independent)
+  // - Top card color and value
+  // - Current player index
+  // - Game direction
+  // - Wild color (if any)
+  private generateGameStateHash(): string {
+    const topCard = this.getTopCard()
+    const topCardInfo = topCard ? `${topCard.color}-${topCard.value}` : 'none'
+
+    // Sort hand sizes to make the hash order-independent
+    const handSizes = this.players.map(p => p.getHandSize()).sort((a, b) => a - b)
+
+    const stateComponents = [
+      `hands:${handSizes.join(',')}`,
+      `top:${topCardInfo}`,
+      `player:${this.currentPlayerIndex}`,
+      `dir:${this.direction}`,
+      `wild:${this.wildColor || 'none'}`,
+      `deck:${this.deck.getRemainingCount()}`,
+      `discard:${this.deck.getDiscardPile().length}`
+    ]
+
+    return stateComponents.join('|')
+  }
+
+  // Add current game state to history and check for cycles
+  private updateGameStateHistory(): void {
+    const currentStateHash = this.generateGameStateHash()
+
+    // Add to history
+    this.gameStateHistory.push(currentStateHash)
+
+    // Keep only the most recent states
+    if (this.gameStateHistory.length > this.MAX_STATE_HISTORY) {
+      this.gameStateHistory = this.gameStateHistory.slice(-this.MAX_STATE_HISTORY)
+    }
+
+    this.debugLog('STATE_HASH', `Current state hash: ${currentStateHash}`)
+  }
+
+  // Check if the current state indicates a cycle (potential deadlock)
+  private detectStateCycle(): boolean {
+    if (this.gameStateHistory.length < this.DEADLOCK_CYCLE_THRESHOLD) {
+      return false
+    }
+
+    const currentState = this.gameStateHistory[this.gameStateHistory.length - 1]
+    const occurrences = this.gameStateHistory.filter(state => state === currentState).length
+
+    if (occurrences >= this.DEADLOCK_CYCLE_THRESHOLD) {
+      this.debugLog('DEADLOCK', `State cycle detected: state ${currentState} has appeared ${occurrences} times`)
+      return true
+    }
+
+    return false
+  }
+
   // Check for deadlock conditions
   private isDeadlock(): boolean {
     this.debugLog('DEADLOCK', 'Checking for deadlock conditions...')
+
+    // NEW: Enhanced state-based cycle detection
+    // This catches the scenario described in the bug report where players cycle through action cards
+    if (this.detectStateCycle()) {
+      this.debugLog('DEADLOCK', 'DEADLOCK DETECTED: State cycle detected - game is stuck in a repeating pattern')
+      this.log("DEADLOCK DETECTED: State cycle detected - game is stuck in a repeating pattern")
+      return true
+    }
 
     // CRITICAL FIX: Enhanced deadlock detection for the specific AI loop scenario
     // Check if deck is empty and discard pile has ≤1 card (the exact scenario from the bug report)
@@ -1676,6 +1762,9 @@ export class UnoGame {
     this.consecutiveSkips = 0
     this.lastPlayerWhoSkipped = null
 
+    // Reset state history for enhanced deadlock detection
+    this.gameStateHistory = []
+
     this.log("Deadlock resolved with force reshuffle - game continues")
   }
 
@@ -1796,6 +1885,9 @@ export class UnoGame {
     this.consecutiveSkips = 0
     this.lastPlayerWhoSkipped = null
     this.turnCount = 0
+
+    // Reset state history for enhanced deadlock detection
+    this.gameStateHistory = []
 
     // Clear all UNO challenge timers
     this.unoChallengeTimers.forEach((timer) => clearTimeout(timer))
