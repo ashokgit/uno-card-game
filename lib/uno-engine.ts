@@ -446,15 +446,17 @@ export class UnoGame {
   private readonly MAX_STATE_HISTORY = 20 // Maximum number of states to track
   private readonly DEADLOCK_CYCLE_THRESHOLD = 3 // Number of times a state must repeat to indicate deadlock
 
-  constructor(playerNames: string[], humanPlayerIndex = 0, rules: Partial<UnoRules> = {}, events: UnoGameEvents = {}) {
+  constructor(playerNames: string[], humanPlayerIndex = 0, rules: Partial<UnoRules> = {}, events: UnoGameEvents = {}, skipInitialDeal = false) {
     this.rules = { ...DEFAULT_RULES, ...rules }
     this.events = events
     this.deck = new UnoDeck((remaining) => {
       this.emitEvent('onDeckReshuffled', remaining)
     }, this.rules.debugMode)
     this.initializePlayers(playerNames, humanPlayerIndex)
-    this.dealInitialCards()
-    this.startGame()
+    if (!skipInitialDeal) {
+      this.dealInitialCards()
+      this.startGame()
+    }
   }
 
   private log(message: string, ...args: any[]): void {
@@ -547,6 +549,25 @@ export class UnoGame {
         if (card) player.addCards([card])
       })
     }
+  }
+
+  // Public method to deal one card to a specific player for animated distribution
+  public dealOneCardToPlayer(playerIndex: number): UnoCard | null {
+    if (playerIndex < 0 || playerIndex >= this.players.length) {
+      return null
+    }
+
+    const card = this.deck.drawCard()
+    if (card) {
+      this.players[playerIndex].addCards([card])
+      return card
+    }
+    return null
+  }
+
+  // Public method to start the game after initial distribution
+  public startGameAfterDistribution(): void {
+    this.startGame()
   }
 
   private startGame(): void {

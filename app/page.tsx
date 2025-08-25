@@ -59,7 +59,7 @@ interface AnimatedCard {
   currentX: number
   currentY: number
   isAnimating: boolean
-  type: 'throw' | 'draw' | 'deal' | 'land'
+  type: 'throw' | 'draw' | 'deal' | 'land' | 'distribute'
   rotation: number
   scale: number
   zIndex: number
@@ -86,6 +86,7 @@ function UnoGameInner() {
   })
   const [players, setPlayers] = useState<Player[]>([])
   const [isAnimating, setIsAnimating] = useState(false)
+  const [isDistributing, setIsDistributing] = useState(false)
   const [playDelay, setPlayDelay] = useState(false)
   const [animatedCards, setAnimatedCards] = useState<AnimatedCard[]>([])
   const [animationPool, setAnimationPool] = useState<AnimatedCard[]>([])
@@ -194,7 +195,7 @@ function UnoGameInner() {
         setDirection(gameData.direction)
         setCurrentPlayerId(engine.getCurrentPlayer().id)
       }
-    })
+    }, true) // Skip initial deal for animated distribution
     setGameEngine(engine)
   }
 
@@ -232,12 +233,117 @@ function UnoGameInner() {
       setDirection(gameData.direction)
       setCurrentPlayerId(gameEngine.getCurrentPlayer().id)
 
-      // Update playable cards after initial state is set
-      setTimeout(() => {
-        updatePlayableCards()
-      }, 0)
+      // Start initial card distribution animation
+      startInitialCardDistribution()
     }
   }, [gameEngine])
+
+  // Initial card distribution animation
+  const startInitialCardDistribution = () => {
+    if (!gameEngine) return
+
+    setIsDistributing(true)
+    setIsAnimating(true)
+    playSound("shuffle")
+
+    // Distribute 7 cards to each player with animation
+    let cardIndex = 0
+    const totalCards = gameEngine.getPlayers().length * 7
+    const distributionDelay = 150 // Faster than regular animations
+
+    const distributeNextCard = () => {
+      if (cardIndex >= totalCards) {
+        // Distribution complete, start the game
+        gameEngine.startGameAfterDistribution()
+        const gameData = convertToUIFormat()
+        setPlayers(gameData.players)
+        setCurrentCard(gameData.currentCard)
+        setDirection(gameData.direction)
+        setCurrentPlayerId(gameEngine.getCurrentPlayer().id)
+
+        // Update playable cards after initial state is set
+        setTimeout(() => {
+          updatePlayableCards()
+          setIsAnimating(false)
+          setIsDistributing(false)
+        }, 500)
+        return
+      }
+
+      const playerIndex = cardIndex % gameEngine.getPlayers().length
+      const round = Math.floor(cardIndex / gameEngine.getPlayers().length)
+
+      // Deal one card to the player
+      const dealtCard = gameEngine.dealOneCardToPlayer(playerIndex)
+
+      if (dealtCard) {
+        // Create distribution animation
+        createDistributionAnimation(dealtCard, playerIndex, round)
+
+        // Play a subtle sound for distribution
+        if (playerIndex === 0) { // Only play sound for human player to avoid too much noise
+          playSound("card-flip")
+        }
+
+        // Update UI to show the new card
+        const gameData = convertToUIFormat()
+        setPlayers(gameData.players)
+      }
+
+      cardIndex++
+      setTimeout(distributeNextCard, distributionDelay)
+    }
+
+    // Start distribution
+    setTimeout(distributeNextCard, 500)
+  }
+
+  // Create distribution animation for a single card
+  const createDistributionAnimation = (card: EngineCard, playerIndex: number, round: number) => {
+    const deckElement = document.querySelector("[data-deck]")
+    const playerElement = document.querySelector(`[data-player="${playerIndex}"]`)
+
+    if (!deckElement || !playerElement) return
+
+    const deckRect = deckElement.getBoundingClientRect()
+    const playerRect = playerElement.getBoundingClientRect()
+
+    // Check animation limit
+    if (animatedCards.filter(card => card.isAnimating).length >= 3) {
+      return
+    }
+
+    const animatedCard = getAnimationFromPool()
+    animatedCard.card = {
+      ...convertEngineCard(card),
+      id: animatedCard.id + 1000000 + Date.now() // Use a large offset + timestamp to ensure uniqueness
+    }
+    animatedCard.startX = deckRect.left + deckRect.width / 2
+    animatedCard.startY = deckRect.top + deckRect.height / 2
+    animatedCard.endX = playerRect.left + playerRect.width / 2
+    animatedCard.endY = playerRect.top + playerRect.height / 2
+    animatedCard.currentX = deckRect.left + deckRect.width / 2
+    animatedCard.currentY = deckRect.top + deckRect.height / 2
+    animatedCard.isAnimating = true
+    animatedCard.type = 'distribute'
+    animatedCard.rotation = 0
+    animatedCard.scale = 1
+    animatedCard.zIndex = 9999
+    animatedCard.trajectory = 'straight'
+    animatedCard.duration = 400 // Faster than regular animations
+    animatedCard.delay = round * 50 + playerIndex * 20 // Stagger based on round and player position
+    animatedCard.startTime = Date.now() + animatedCard.delay
+    // Enhanced physics properties for distribution animation
+    animatedCard.velocity = { x: 0, y: 0 }
+    animatedCard.gravity = 0
+    animatedCard.bounce = 0
+    animatedCard.spin = Math.random() * 4 - 2 // Subtle spin
+    animatedCard.airResistance = 1
+    animatedCard.maxBounces = 0
+    animatedCard.bounceCount = 0
+
+    setAnimatedCards(prev => [...prev, animatedCard])
+  }
 
 
 
@@ -1448,6 +1554,8 @@ function UnoGameInner() {
             // Animation complete
             if (card.type === 'throw' || card.type === 'draw') {
               playSound("card-land")
+            } else if (card.type === 'distribute') {
+              playSound("card-land")
             }
             return { ...card, isAnimating: false, currentX: card.endX, currentY: card.endY, type: 'land' as any }
           }
@@ -1494,6 +1602,13 @@ function UnoGameInner() {
               const wobble = Math.sin(progress * Math.PI * 4) * 3
               currentY += wobble
               currentRotation = card.spin * progress * 45 // Reduced from 180 to 45 for more subtle rotation
+            }
+
+            // Add subtle wobble for distribution animations
+            if (card.type === 'distribute') {
+              const wobble = Math.sin(progress * Math.PI * 6) * 2 // Faster, smaller wobble
+              currentY += wobble
+              currentRotation = card.spin * progress * 30 // Subtle rotation
             }
           }
 
@@ -1737,6 +1852,28 @@ function UnoGameInner() {
       {/* Casino ambiance overlay */}
       <div className="casino-ambiance"></div>
 
+      {/* Initial card distribution overlay */}
+      {isDistributing && (
+        <div className="absolute inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+          <Card className="p-8 bg-black/70 text-white text-center border-2 border-yellow-400/50">
+            <div className="flex flex-col items-center space-y-4">
+              <div className="relative">
+                <div className="w-16 h-24 bg-gradient-to-br from-red-600 to-red-400 rounded-lg border-2 border-white/20 animate-pulse"></div>
+                <div className="absolute -top-2 -right-2 w-6 h-8 bg-gradient-to-br from-blue-600 to-blue-400 rounded-lg border-2 border-white/20 animate-pulse" style={{ animationDelay: '0.2s' }}></div>
+                <div className="absolute -bottom-2 -left-2 w-5 h-7 bg-gradient-to-br from-green-600 to-green-400 rounded-lg border-2 border-white/20 animate-pulse" style={{ animationDelay: '0.4s' }}></div>
+              </div>
+              <h2 className="text-2xl font-bold text-yellow-400">Dealing Cards...</h2>
+              <p className="text-white/80">Preparing your hand for battle!</p>
+              <div className="flex space-x-2">
+                <div className="w-2 h-2 bg-yellow-400 rounded-full animate-bounce"></div>
+                <div className="w-2 h-2 bg-yellow-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                <div className="w-2 h-2 bg-yellow-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+              </div>
+            </div>
+          </Card>
+        </div>
+      )}
+
       {animatedCards.map((animatedCard) => {
         const getAnimationStyle = () => {
           // Use the current position that's being updated by the animation frame
@@ -1758,6 +1895,9 @@ function UnoGameInner() {
               }
             } else if (animatedCard.type === 'draw') {
               rotation = Math.sin(progress * Math.PI * 4) * 15
+            } else if (animatedCard.type === 'distribute') {
+              rotation = Math.sin(progress * Math.PI * 6) * 10
+              scale = (animatedCard.scale || 1) + Math.sin(progress * Math.PI) * 0.1
             }
           }
 
@@ -1778,6 +1918,8 @@ function UnoGameInner() {
               return 'shadow-2xl border-4 border-yellow-400 animate-pulse drop-shadow-2xl'
             case 'draw':
               return 'shadow-xl border-2 border-blue-400 animate-pulse drop-shadow-xl'
+            case 'distribute':
+              return 'shadow-lg border-2 border-purple-400 animate-pulse drop-shadow-lg'
             case 'land':
               return 'shadow-lg border-2 border-green-400 animate-card-land'
             default:
@@ -1817,6 +1959,14 @@ function UnoGameInner() {
                 </>
               )}
 
+              {animatedCard.type === 'distribute' && (
+                <>
+                  <div className="absolute inset-0 bg-purple-400/30 rounded-lg blur-lg animate-pulse"></div>
+                  <div className="absolute inset-0 bg-pink-300/20 rounded-lg blur-md animate-ping"></div>
+                  <div className="absolute inset-0 bg-gradient-to-r from-purple-400/40 to-pink-400/40 rounded-lg blur-xl animate-pulse"></div>
+                </>
+              )}
+
               {/* Enhanced particle trail effects */}
               {animatedCard.type === 'throw' && (
                 <>
@@ -1831,6 +1981,14 @@ function UnoGameInner() {
                 <>
                   <div className="absolute -top-1 -left-1 w-3 h-3 bg-blue-400/50 rounded-full animate-ping"></div>
                   <div className="absolute -bottom-1 -right-1 w-2 h-2 bg-cyan-400/40 rounded-full animate-ping" style={{ animationDelay: '0.3s' }}></div>
+                </>
+              )}
+
+              {animatedCard.type === 'distribute' && (
+                <>
+                  <div className="absolute -top-1 -left-1 w-2 h-2 bg-purple-400/50 rounded-full animate-ping"></div>
+                  <div className="absolute -bottom-1 -right-1 w-1.5 h-1.5 bg-pink-400/40 rounded-full animate-ping" style={{ animationDelay: '0.2s' }}></div>
+                  <div className="absolute top-1/2 -left-1 w-1 h-1 bg-purple-300/30 rounded-full animate-ping" style={{ animationDelay: '0.4s' }}></div>
                 </>
               )}
             </div>

@@ -1,0 +1,1897 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.UnoGame = exports.UnoPlayer = exports.UnoDeck = exports.UnoCard = exports.DEFAULT_RULES = void 0;
+exports.DEFAULT_RULES = {
+    stackDrawTwo: false, // Official rules: no stacking
+    stackDrawFour: false, // Official rules: no stacking
+    mustPlayIfDrawable: false, // Official rules: player chooses
+    allowDrawWhenPlayable: true, // official behavior
+    targetScore: 500,
+    debugMode: false,
+    aiDifficulty: 'expert',
+    enableJumpIn: false,
+    enableSevenZero: false,
+    enableSwapHands: false,
+    showDiscardPile: false, // Official: only top card is relevant, but can enable for full visibility
+    deadlockResolution: 'end_round', // Default: end round when deadlock detected
+};
+class UnoCard {
+    constructor(id, color, value, points = 0) {
+        this.id = id;
+        this.color = color;
+        this.value = value;
+        this.points = points;
+        this.points = this.calculatePoints();
+    }
+    calculatePoints() {
+        if (typeof this.value === "number")
+            return this.value;
+        if (this.value === "Skip" || this.value === "Reverse" || this.value === "Draw Two")
+            return 20;
+        if (this.value === "Wild" || this.value === "Wild Draw Four")
+            return 50;
+        return 0;
+    }
+    canPlayOn(topCard, wildColor, playerHand) {
+        // Wild Draw Four restriction check
+        if (this.color === "wild" && this.value === "Wild Draw Four" && playerHand) {
+            const currentActiveColor = wildColor || topCard.color;
+            const hasMatchingColor = playerHand.some((c) => c.color === currentActiveColor && c.id !== this.id);
+            if (hasMatchingColor) {
+                return false; // Cannot play Wild Draw Four if player has matching color cards
+            }
+        }
+        // Wild cards can always be played (except Wild Draw Four with restrictions)
+        if (this.color === "wild")
+            return true;
+        // If there's a wild color choice, match that
+        if (wildColor && this.color === wildColor)
+            return true;
+        // Standard matching: same color or same value
+        return this.color === topCard.color || this.value === topCard.value;
+    }
+    isActionCard() {
+        return ["Skip", "Reverse", "Draw Two", "Wild", "Wild Draw Four"].includes(this.value);
+    }
+    isWildCard() {
+        return this.color === "wild";
+    }
+}
+exports.UnoCard = UnoCard;
+class UnoDeck {
+    constructor(onReshuffle, debugMode = false) {
+        this.onReshuffle = onReshuffle;
+        this.cards = [];
+        this.discardPile = [];
+        this.debugMode = false;
+        this.debugMode = debugMode;
+        this.initializeDeck();
+        this.shuffle();
+    }
+    initializeDeck() {
+        const colors = ["red", "blue", "green", "yellow"];
+        let cardId = 0;
+        // Number cards: 76 total (one 0 per color, two 1-9 per color)
+        colors.forEach((color) => {
+            // One 0 per color
+            this.cards.push(new UnoCard(`${cardId++}`, color, 0));
+            // Two of each 1-9 per color
+            for (let value = 1; value <= 9; value++) {
+                this.cards.push(new UnoCard(`${cardId++}`, color, value));
+                this.cards.push(new UnoCard(`${cardId++}`, color, value));
+            }
+        });
+        // Action cards: 24 total (2 per color for Skip, Reverse, Draw Two)
+        colors.forEach((color) => {
+            const actionCards = ["Skip", "Reverse", "Draw Two"];
+            actionCards.forEach((action) => {
+                this.cards.push(new UnoCard(`${cardId++}`, color, action));
+                this.cards.push(new UnoCard(`${cardId++}`, color, action));
+            });
+        });
+        // Wild cards: 8 total (4 Wild, 4 Wild Draw Four)
+        for (let i = 0; i < 4; i++) {
+            this.cards.push(new UnoCard(`${cardId++}`, "wild", "Wild"));
+            this.cards.push(new UnoCard(`${cardId++}`, "wild", "Wild Draw Four"));
+        }
+    }
+    shuffle() {
+        for (let i = this.cards.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [this.cards[i], this.cards[j]] = [this.cards[j], this.cards[i]];
+        }
+    }
+    drawCard() {
+        if (this.cards.length === 0) {
+            if (this.debugMode) {
+                console.log(`[DECK] Deck empty, attempting to reshuffle discard pile`);
+                console.log(`[DECK] Current state - deck: ${this.cards.length}, discard: ${this.discardPile.length}`);
+            }
+            this.reshuffleDiscardPile();
+            if (this.debugMode) {
+                console.log(`[DECK] After reshuffle attempt - deck: ${this.cards.length}, discard: ${this.discardPile.length}`);
+            }
+        }
+        const card = this.cards.pop();
+        if (this.debugMode) {
+            if (card) {
+                console.log(`[DECK] Card drawn: ${card.color} ${card.value}. Remaining: ${this.cards.length}`);
+            }
+            else {
+                console.log(`[DECK] No card drawn - deck empty after reshuffle attempt`);
+            }
+        }
+        return card || null;
+    }
+    drawCards(count) {
+        const drawnCards = [];
+        let isExhausted = false;
+        for (let i = 0; i < count; i++) {
+            const card = this.drawCard();
+            if (card) {
+                drawnCards.push(card);
+            }
+            else {
+                // Deck was exhausted during the draw
+                isExhausted = true;
+                break;
+            }
+        }
+        return { drawnCards, isExhausted };
+    }
+    reshuffleDiscardPile() {
+        if (this.debugMode) {
+            console.log(`[DECK] Attempting reshuffle - deck: ${this.cards.length} cards, discard: ${this.discardPile.length} cards`);
+        }
+        if (this.discardPile.length <= 1) {
+            if (this.debugMode) {
+                console.log(`[DECK] Cannot reshuffle - discard pile has ${this.discardPile.length} cards.`);
+            }
+            return;
+        }
+        // Keep top card, shuffle rest back into deck
+        const topCard = this.discardPile.pop();
+        const cardsToReshuffle = this.discardPile.length;
+        this.cards = [...this.discardPile];
+        this.discardPile = [topCard];
+        this.shuffle();
+        if (this.debugMode) {
+            console.log(`[DECK] Reshuffled ${cardsToReshuffle} cards back into deck. Top card: ${topCard.color} ${topCard.value}. New deck size: ${this.cards.length}`);
+        }
+        // Notify parent about reshuffle
+        this.onReshuffle?.(this.cards.length);
+    }
+    // Force reshuffle even with 1 card (for deadlock resolution)
+    forceReshuffle() {
+        if (this.discardPile.length === 0)
+            return;
+        // If only 1 card, create a new deck with that card and shuffle
+        if (this.discardPile.length === 1) {
+            const topCard = this.discardPile[0];
+            this.cards = [topCard];
+            this.shuffle();
+        }
+        else {
+            // Normal reshuffle
+            const topCard = this.discardPile.pop();
+            this.cards = [...this.discardPile];
+            this.discardPile = [topCard];
+            this.shuffle();
+        }
+        // Notify parent about reshuffle
+        this.onReshuffle?.(this.cards.length);
+    }
+    playCard(card) {
+        this.discardPile.push(card);
+    }
+    getTopCard() {
+        return this.discardPile[this.discardPile.length - 1] || null;
+    }
+    getRemainingCount() {
+        return this.cards.length;
+    }
+    getDiscardPile() {
+        return [...this.discardPile];
+    }
+}
+exports.UnoDeck = UnoDeck;
+class UnoPlayer {
+    constructor(id, name, isHuman = false) {
+        this.id = id;
+        this.name = name;
+        this.isHuman = isHuman;
+        this.hand = [];
+        this.hasCalledUno = false;
+        this.score = 0;
+        this.unoCallTime = null; // Track when UNO was called
+    }
+    addCards(cards) {
+        this.hand.push(...cards);
+        // Reset UNO call if cards are added (penalty for not calling UNO)
+        if (this.hasOneCard() && !this.hasCalledUno) {
+            this.resetUnoCall();
+        }
+    }
+    removeCard(cardId) {
+        const cardIndex = this.hand.findIndex((card) => card.id === cardId);
+        if (cardIndex === -1)
+            return null;
+        const removedCard = this.hand.splice(cardIndex, 1)[0];
+        // If this was the second-to-last card, reset UNO call
+        if (this.hand.length === 1) {
+            this.resetUnoCall();
+        }
+        return removedCard;
+    }
+    getHand() {
+        return [...this.hand];
+    }
+    getHandSize() {
+        return this.hand.length;
+    }
+    hasCard(cardId) {
+        return this.hand.some((card) => card.id === cardId);
+    }
+    getPlayableCards(topCard, wildColor) {
+        return this.hand.filter((card) => card.canPlayOn(topCard, wildColor, this.hand));
+    }
+    callUno() {
+        if (this.hasOneCard()) {
+            this.hasCalledUno = true;
+            this.unoCallTime = Date.now();
+        }
+    }
+    resetUnoCall() {
+        this.hasCalledUno = false;
+        this.unoCallTime = null;
+    }
+    getHasCalledUno() {
+        return this.hasCalledUno;
+    }
+    getUnoCallTime() {
+        return this.unoCallTime;
+    }
+    // Check if UNO call is valid (called when having exactly 1 card)
+    isUnoCallValid() {
+        return this.hasOneCard() && this.hasCalledUno;
+    }
+    // Check if player should be penalized for not calling UNO
+    shouldBePenalizedForUno() {
+        return this.hasOneCard() && !this.hasCalledUno;
+    }
+    calculateHandPoints() {
+        return this.hand.reduce((total, card) => total + card.points, 0);
+    }
+    addScore(points) {
+        this.score += points;
+    }
+    getScore() {
+        return this.score;
+    }
+    isEmpty() {
+        return this.hand.length === 0;
+    }
+    hasOneCard() {
+        return this.hand.length === 1;
+    }
+    // Set hand directly (for efficient hand swapping/rotation)
+    setHand(cards) {
+        this.hand = [...cards];
+        this.resetUnoCall();
+    }
+    // Enhanced AI color choice strategy
+    chooseWildColor() {
+        const colorCounts = { red: 0, blue: 0, green: 0, yellow: 0 };
+        // Count cards for each color
+        this.hand.forEach((card) => {
+            if (card.color !== "wild") {
+                colorCounts[card.color]++;
+            }
+        });
+        // Strategy 1: Prefer colors with high-point action cards (Draw Two, Skip, Reverse)
+        const actionCardColors = { red: 0, blue: 0, green: 0, yellow: 0 };
+        this.hand.forEach((card) => {
+            if (card.color !== "wild" && card.isActionCard()) {
+                actionCardColors[card.color]++;
+            }
+        });
+        // Find colors with action cards
+        const colorsWithActionCards = Object.entries(actionCardColors)
+            .filter(([_, count]) => count > 0)
+            .sort((a, b) => actionCardColors[b[0]] - actionCardColors[a[0]]);
+        if (colorsWithActionCards.length > 0) {
+            // Prefer colors with the most action cards
+            return colorsWithActionCards[0][0];
+        }
+        // Strategy 2: Prefer colors with the most cards (original strategy)
+        const maxColor = Object.entries(colorCounts).reduce((a, b) => colorCounts[a[0]] > colorCounts[b[0]] ? a : b)[0];
+        if (colorCounts[maxColor] > 0) {
+            return maxColor;
+        }
+        // Strategy 3: If no preference, choose randomly
+        const colors = ["red", "blue", "green", "yellow"];
+        return colors[Math.floor(Math.random() * colors.length)];
+    }
+}
+exports.UnoPlayer = UnoPlayer;
+class UnoGame {
+    constructor(playerNames, humanPlayerIndex = 0, rules = {}, events = {}, skipInitialDeal = false) {
+        this.players = [];
+        this.currentPlayerIndex = 0;
+        this.direction = "clockwise";
+        this.wildColor = null;
+        this.previousActiveColor = null; // Track color before Wild+4 was played
+        this.phase = "playing";
+        this.winner = null;
+        this.roundWinner = null;
+        this.skipNext = false;
+        this.drawPenalty = 0;
+        this.lastPlayerWithOneCard = null; // Track who had one card for UNO challenges
+        this.unoChallengeWindow = 2000; // 2 seconds to challenge UNO call
+        this.lastActionCard = null; // Track the last action card for stacking
+        this.unoChallengeTimers = new Map(); // Track UNO challenge timers
+        this.eventLog = []; // Event log for replay/debug
+        // Deadlock detection properties
+        this.consecutiveSkips = 0; // Track consecutive skips to detect deadlock
+        this.lastPlayerWhoSkipped = null; // Track who last skipped to detect full cycle
+        this.turnCount = 0; // Track total turns for timeout mechanism
+        // Enhanced state-based deadlock detection
+        this.gameStateHistory = []; // Store recent game state hashes for play-loop detection
+        this.resourceStateHistory = []; // Store recent resource state hashes for resource exhaustion detection
+        this.MAX_STATE_HISTORY = 20; // Maximum number of states to track
+        this.DEADLOCK_CYCLE_THRESHOLD = 3; // Number of times a state must repeat to indicate deadlock
+        this.rules = { ...exports.DEFAULT_RULES, ...rules };
+        this.events = events;
+        this.deck = new UnoDeck((remaining) => {
+            this.emitEvent('onDeckReshuffled', remaining);
+        }, this.rules.debugMode);
+        this.initializePlayers(playerNames, humanPlayerIndex);
+        if (!skipInitialDeal) {
+            this.dealInitialCards();
+            this.startGame();
+        }
+    }
+    log(message, ...args) {
+        if (this.rules.debugMode) {
+            console.log(`[UNO] ${message}`, ...args);
+        }
+    }
+    // Enhanced debug logging for microscopic analysis
+    debugLog(category, message, data) {
+        if (this.rules.debugMode) {
+            const timestamp = new Date().toISOString();
+            const playerName = this.getCurrentPlayer()?.name || 'Unknown';
+            const turnInfo = `[Turn ${this.turnCount}] [${playerName}]`;
+            const categoryTag = `[${category.toUpperCase()}]`;
+            console.log(`${timestamp} ${turnInfo} ${categoryTag} ${message}`, data || '');
+        }
+    }
+    // Log game state for debugging
+    logGameState(context) {
+        if (!this.rules.debugMode)
+            return;
+        const state = {
+            currentPlayer: this.getCurrentPlayer()?.name,
+            turnCount: this.turnCount,
+            phase: this.phase,
+            direction: this.direction,
+            deckCount: this.deck.getRemainingCount(),
+            discardPileCount: this.deck.getDiscardPile().length,
+            topCard: this.getTopCard() ? `${this.getTopCard().color} ${this.getTopCard().value}` : 'None',
+            wildColor: this.wildColor,
+            drawPenalty: this.drawPenalty,
+            skipNext: this.skipNext,
+            consecutiveSkips: this.consecutiveSkips,
+            lastPlayerWhoSkipped: this.lastPlayerWhoSkipped,
+            playerHandSizes: this.players.map(p => `${p.name}: ${p.getHandSize()} cards`),
+            playerHands: this.players.map(p => ({
+                name: p.name,
+                handSize: p.getHandSize(),
+                cards: p.getHand().map(c => `${c.color} ${c.value}`),
+                playableCards: this.getTopCard() ? p.getPlayableCards(this.getTopCard(), this.wildColor || undefined).map(c => `${c.color} ${c.value}`) : []
+            })),
+            isDeadlock: this.isDeadlock()
+        };
+        this.debugLog('STATE', `Game state at ${context}:`, state);
+    }
+    logEvent(event, data = {}) {
+        const logEntry = {
+            timestamp: Date.now(),
+            event,
+            data,
+        };
+        this.eventLog.push(logEntry);
+        // Cap event log to prevent unbounded growth
+        if (this.eventLog.length > 1000) {
+            this.eventLog = this.eventLog.slice(-1000);
+        }
+        this.log(`EVENT: ${event}`, data);
+    }
+    emitEvent(eventName, ...args) {
+        const handler = this.events[eventName];
+        if (handler) {
+            try {
+                handler(...args);
+            }
+            catch (error) {
+                this.log(`Error in event handler ${eventName}:`, error);
+            }
+        }
+        // Log the event
+        this.logEvent(eventName, args);
+    }
+    initializePlayers(playerNames, humanPlayerIndex) {
+        this.players = playerNames.map((name, index) => new UnoPlayer(`player_${index}`, name, index === humanPlayerIndex));
+    }
+    dealInitialCards() {
+        // Deal 7 cards to each player
+        for (let i = 0; i < 7; i++) {
+            this.players.forEach((player) => {
+                const card = this.deck.drawCard();
+                if (card)
+                    player.addCards([card]);
+            });
+        }
+    }
+    // Public method to deal one card to a specific player for animated distribution
+    dealOneCardToPlayer(playerIndex) {
+        if (playerIndex < 0 || playerIndex >= this.players.length) {
+            return null;
+        }
+        const card = this.deck.drawCard();
+        if (card) {
+            this.players[playerIndex].addCards([card]);
+            return card;
+        }
+        return null;
+    }
+    // Public method to start the game after initial distribution
+    startGameAfterDistribution() {
+        this.startGame();
+    }
+    startGame() {
+        // Draw first card for discard pile
+        let firstCard = this.deck.drawCard();
+        // Handle all action cards as first card according to official rules
+        while (firstCard?.isActionCard()) {
+            if (firstCard.value === "Wild Draw Four") {
+                // Wild Draw Four cannot be the first card - return to deck, shuffle, and draw new card
+                this.log("Wild Draw Four as first card - returning to deck and reshuffling");
+                this.deck.playCard(firstCard); // Add it back to the discard pile temporarily
+                this.deck.reshuffleDiscardPile(); // This will shuffle it back into the deck
+                firstCard = this.deck.drawCard();
+            }
+            else {
+                // Apply effect to first player for other action cards
+                this.log("Action card as first card - applying effect to first player");
+                this.handleFirstCardEffect(firstCard);
+                break;
+            }
+        }
+        if (firstCard) {
+            this.deck.playCard(firstCard);
+            this.previousActiveColor = firstCard.color; // Store initial active color
+            this.log("Game started with card:", firstCard.color, firstCard.value);
+        }
+    }
+    handleFirstCardEffect(card) {
+        // Apply first card effects to the first player
+        switch (card.value) {
+            case "Skip":
+                this.skipNext = true;
+                this.log("First card is Skip - first player is skipped");
+                break;
+            case "Reverse":
+                this.direction = "counterclockwise";
+                this.log("First card is Reverse - play direction reversed");
+                break;
+            case "Draw Two":
+                this.drawPenalty = 2;
+                this.log("First card is Draw Two - first player draws 2");
+                break;
+            case "Wild":
+                // First player chooses color
+                this.phase = "choosing_color";
+                this.log("First card is Wild - first player must choose color");
+                break;
+        }
+    }
+    startUnoChallengeTimer(player) {
+        // Clear any existing timer for this player
+        this.clearUnoChallengeTimer(player.id);
+        // Start new timer
+        const timer = setTimeout(() => {
+            if (player.hasOneCard() && !player.getHasCalledUno()) {
+                // Auto-penalty if UNO not called within time window
+                this.log("UNO challenge timer expired - applying penalty to", player.name);
+                const result = this.deck.drawCards(2);
+                player.addCards(result.drawnCards);
+                player.resetUnoCall();
+            }
+            this.unoChallengeTimers.delete(player.id);
+        }, this.unoChallengeWindow);
+        this.unoChallengeTimers.set(player.id, timer);
+    }
+    clearUnoChallengeTimer(playerId) {
+        const timer = this.unoChallengeTimers.get(playerId);
+        if (timer) {
+            clearTimeout(timer);
+            this.unoChallengeTimers.delete(playerId);
+        }
+    }
+    // Choose color for Wild card (used when phase is "choosing_color")
+    chooseColor(color) {
+        if (this.phase !== "choosing_color")
+            return false;
+        this.wildColor = color;
+        this.phase = "playing";
+        const topCard = this.getTopCard();
+        if (topCard) {
+            this.emitEvent('onActionCardPlayed', this.getCurrentPlayer(), topCard, `Color chosen: ${color}`);
+        }
+        this.log("Color chosen:", color);
+        return true;
+    }
+    /**
+     * Play a card from a player's hand
+     * @param playerId - ID of the player playing the card
+     * @param cardId - ID of the card to play
+     * @param chosenWildColor - Color chosen for wild cards
+     * @param isUnoCall - Whether the player is calling UNO with this play (for smoother UX)
+     * @returns true if the card was played successfully
+     */
+    playCard(playerId, cardId, chosenWildColor, isUnoCall = false) {
+        this.debugLog('PLAY', `Player ${playerId} attempting to play card ${cardId}`);
+        this.logGameState('before play');
+        // Validate the play attempt
+        const validation = this._validatePlay(playerId, cardId);
+        if (!validation.isValid) {
+            this.debugLog('PLAY', `Play validation failed: ${validation.reason}`);
+            this.log("Play validation failed:", validation.reason);
+            return false;
+        }
+        const { player, card, isJumpIn } = validation;
+        // Capture the active color BEFORE any mutations for Wild Draw Four challenges
+        const activeColorBeforePlay = this.wildColor || this.getTopCard().color;
+        // Remove card from player's hand and play it
+        const playedCard = player.removeCard(cardId);
+        if (!playedCard)
+            return false;
+        this.deck.playCard(playedCard);
+        // Store the active color ONLY when playing a Wild Draw Four
+        // This ensures previousActiveColor is accurate for challenge validation
+        if (playedCard.value === "Wild Draw Four") {
+            this.previousActiveColor = activeColorBeforePlay;
+        }
+        // Clear wild color BEFORE applying effects to ensure previousActiveColor is accurate
+        this.wildColor = null;
+        // Emit card played event
+        this.emitEvent('onCardPlayed', player, playedCard, chosenWildColor);
+        // Handle UNO state
+        this._handleUnoState(player, isUnoCall);
+        // Handle special card effects FIRST (even if this is the winning card)
+        this.handleCardEffect(playedCard, chosenWildColor);
+        // Check for win AFTER applying effects
+        if (player.isEmpty()) {
+            this.endRound(player);
+            return true;
+        }
+        // Reset consecutive skips counter since a card was played
+        this.consecutiveSkips = 0;
+        this.lastPlayerWhoSkipped = null;
+        // Handle turn management
+        this._handleTurnManagement(playerId, isJumpIn || false);
+        return true;
+    }
+    /**
+     * Validate if a card can be played
+     * @private
+     */
+    _validatePlay(playerId, cardId) {
+        const player = this.players.find((p) => p.id === playerId);
+        const topCard = this.deck.getTopCard();
+        if (!player || !topCard) {
+            return { isValid: false, reason: "Player or top card not found" };
+        }
+        // Check if this is a valid play (either current player's turn or jump-in)
+        const isCurrentPlayer = this.getCurrentPlayer().id === playerId;
+        const isJumpIn = this.rules.enableJumpIn && !isCurrentPlayer && this.phase === "playing";
+        if (!isCurrentPlayer && !isJumpIn) {
+            return { isValid: false, reason: "Not player's turn and jump-in not allowed" };
+        }
+        if (this.phase !== "playing") {
+            return { isValid: false, reason: `Invalid phase: ${this.phase}` };
+        }
+        const card = player.getHand().find((c) => c.id === cardId);
+        if (!card) {
+            return { isValid: false, reason: "Card not found in player's hand" };
+        }
+        // For jump-in, verify the card is an exact match to the top card
+        if (isJumpIn) {
+            if (card.color !== topCard.color || card.value !== topCard.value) {
+                return { isValid: false, reason: "Jump-in failed - card must be exact match" };
+            }
+            this.log("Jump-in successful -", player.name, "jumps in with", card.color, card.value);
+        }
+        if (!card.canPlayOn(topCard, this.wildColor || undefined, player.getHand())) {
+            return { isValid: false, reason: "Card cannot be played on top card" };
+        }
+        // Check if card can be stacked on previous action card (configurable)
+        if (this.lastActionCard && this.drawPenalty > 0) {
+            const canStack = (this.rules.stackDrawTwo && this.lastActionCard.value === "Draw Two" && card.value === "Draw Two") ||
+                (this.rules.stackDrawFour && this.lastActionCard.value === "Wild Draw Four" && card.value === "Wild Draw Four");
+            if (!canStack) {
+                return { isValid: false, reason: "Cannot play non-stackable card when draw penalty is active" };
+            }
+        }
+        // Handle Wild Draw Four challenge rule (backup verification)
+        if (card.value === "Wild Draw Four") {
+            // Check against the current active color (not previousActiveColor which is for challenges)
+            const currentActiveColor = this.wildColor || topCard.color;
+            const hasMatchingColor = player.getHand().some((c) => c.color === currentActiveColor && c.id !== cardId);
+            if (hasMatchingColor) {
+                return { isValid: false, reason: "Wild Draw Four validation failed - player has matching color cards" };
+            }
+            this.log("Wild Draw Four played legally - no matching color cards found");
+        }
+        return { isValid: true, player, card, isJumpIn };
+    }
+    /**
+     * Handle UNO state when a player plays a card
+     * @private
+     */
+    _handleUnoState(player, isUnoCall) {
+        if (player.hasOneCard()) {
+            // Check if the AI should be calling UNO on this turn.
+            const shouldAutoCallUno = !player.isHuman && isUnoCall;
+            if (shouldAutoCallUno || player.getHasCalledUno()) {
+                // If the AI should call UNO, update its state now.
+                if (shouldAutoCallUno) {
+                    player.callUno(); // <-- This line is the fix.
+                }
+                this.lastPlayerWithOneCard = player;
+                this.clearUnoChallengeTimer(player.id);
+                this.emitEvent('onUnoCalled', player);
+            }
+            else {
+                // This path is now correctly reserved for human players who forget to call UNO.
+                this.startUnoChallengeTimer(player);
+            }
+        }
+    }
+    /**
+     * Handle turn management after playing a card
+     * @private
+     */
+    _handleTurnManagement(playerId, isJumpIn) {
+        if (this.phase === "playing") {
+            if (isJumpIn) {
+                // For jump-in, set the jumping player as the current player
+                const jumpInPlayerIndex = this.players.findIndex(p => p.id === playerId);
+                if (jumpInPlayerIndex !== -1) {
+                    this.currentPlayerIndex = jumpInPlayerIndex;
+                    this.log("Turn transferred to jumping player:", this.getCurrentPlayer().name);
+                }
+            }
+            else {
+                // Normal turn progression
+                this.nextTurn();
+            }
+        }
+    }
+    handleCardEffect(card, chosenWildColor) {
+        this.debugLog('EFFECT', `Handling card effect for ${card.color} ${card.value}`);
+        let effect = "";
+        switch (card.value) {
+            case "Skip":
+                this.skipNext = true;
+                this.lastActionCard = card;
+                effect = "Skip next player";
+                this.debugLog('EFFECT', 'Skip effect applied - next player will be skipped');
+                break;
+            case "Reverse":
+                this.direction = this.direction === "clockwise" ? "counterclockwise" : "clockwise";
+                if (this.players.length === 2) {
+                    // In 2-player game, Reverse acts like Skip
+                    this.skipNext = true;
+                    effect = "Skip next player (2-player Reverse)";
+                    this.debugLog('EFFECT', 'Reverse effect in 2-player game - next player will be skipped');
+                }
+                else {
+                    effect = "Reverse direction";
+                    this.debugLog('EFFECT', `Direction reversed to ${this.direction}`);
+                }
+                this.lastActionCard = card;
+                break;
+            case "Draw Two":
+                // Check if we can stack on previous Draw Two
+                if (this.lastActionCard?.value === "Draw Two") {
+                    this.drawPenalty += 2;
+                    effect = "Stack Draw Two (+" + this.drawPenalty + ")";
+                    this.debugLog('EFFECT', `Draw Two stacked - penalty increased to ${this.drawPenalty}`);
+                }
+                else {
+                    this.drawPenalty = 2;
+                    effect = "Draw Two";
+                    this.debugLog('EFFECT', 'Draw Two effect applied - penalty set to 2');
+                }
+                this.skipNext = true;
+                this.lastActionCard = card;
+                break;
+            case "Wild":
+                this.wildColor = chosenWildColor || this.getCurrentPlayer().chooseWildColor();
+                this.lastActionCard = null; // Reset action card tracking
+                effect = "Wild - color changed to " + this.wildColor;
+                this.debugLog('EFFECT', `Wild card played - color changed to ${this.wildColor}`);
+                break;
+            case "Wild Draw Four":
+                // Check if we can stack on previous Wild Draw Four
+                if (this.lastActionCard?.value === "Wild Draw Four") {
+                    this.drawPenalty += 4;
+                    effect = "Stack Wild Draw Four (+" + this.drawPenalty + ")";
+                    this.debugLog('EFFECT', `Wild Draw Four stacked - penalty increased to ${this.drawPenalty}`);
+                }
+                else {
+                    this.drawPenalty = 4;
+                    effect = "Wild Draw Four";
+                    this.debugLog('EFFECT', 'Wild Draw Four effect applied - penalty set to 4');
+                }
+                this.wildColor = chosenWildColor || this.getCurrentPlayer().chooseWildColor();
+                this.skipNext = true;
+                this.lastActionCard = card;
+                break;
+            // House Rules
+            case 7:
+                if (this.rules.enableSevenZero) {
+                    // Seven rule: current player chooses another player to swap hands with
+                    this.phase = "choosing_player"; // Set phase to indicate player selection needed
+                    effect = "Seven - choose player to swap hands";
+                    this.debugLog('EFFECT', 'Seven effect applied - waiting for player selection');
+                }
+                break;
+            case 0:
+                if (this.rules.enableSevenZero) {
+                    // Zero rule: rotate hands in play direction
+                    this.rotateHands();
+                    effect = "Zero - rotate hands in play direction";
+                    this.debugLog('EFFECT', `Zero effect applied - hands rotated in ${this.direction} direction`);
+                }
+                break;
+        }
+        // Emit action card event
+        if (effect) {
+            this.debugLog('EFFECT', `Card effect: ${effect}`);
+            this.emitEvent('onActionCardPlayed', this.getCurrentPlayer(), card, effect);
+        }
+    }
+    // House rule: rotate hands in play direction
+    rotateHands() {
+        const hands = this.players.map(player => [...player.getHand()]);
+        // Rotate hands based on direction
+        if (this.direction === "clockwise") {
+            // Pass hands clockwise
+            for (let i = 0; i < this.players.length; i++) {
+                const nextIndex = (i + 1) % this.players.length;
+                this.players[nextIndex].setHand(hands[i]);
+            }
+        }
+        else {
+            // Pass hands counterclockwise
+            for (let i = 0; i < this.players.length; i++) {
+                const prevIndex = i === 0 ? this.players.length - 1 : i - 1;
+                this.players[prevIndex].setHand(hands[i]);
+            }
+        }
+        this.log("Hands rotated in", this.direction, "direction");
+        const topCard = this.getTopCard();
+        if (topCard) {
+            this.emitEvent('onActionCardPlayed', this.getCurrentPlayer(), topCard, "Zero - rotate hands");
+        }
+    }
+    // House rule: swap hands between two players
+    swapHands(player1Id, player2Id) {
+        if (!this.rules.enableSevenZero || this.phase !== "choosing_player")
+            return false;
+        if (player1Id === player2Id)
+            return false;
+        const player1 = this.players.find((p) => p.id === player1Id);
+        const player2 = this.players.find((p) => p.id === player2Id);
+        if (!player1 || !player2)
+            return false;
+        // Store hands
+        const hand1 = [...player1.getHand()];
+        const hand2 = [...player2.getHand()];
+        // Swap hands
+        player1.setHand(hand2);
+        player2.setHand(hand1);
+        // Reset phase
+        this.phase = "playing";
+        this.log("Hands swapped between", player1.name, "and", player2.name);
+        const topCard = this.getTopCard();
+        if (topCard) {
+            this.emitEvent('onActionCardPlayed', this.getCurrentPlayer(), topCard, `Seven - swapped ${player1.name} & ${player2.name}`);
+        }
+        return true;
+    }
+    drawCard(playerId) {
+        this.debugLog('DRAW', `Player ${playerId} attempting to draw card`);
+        this.logGameState('before draw');
+        const player = this.players.find((p) => p.id === playerId);
+        if (!player || this.getCurrentPlayer().id !== playerId) {
+            this.debugLog('DRAW', `Draw failed: invalid player or not player's turn`);
+            return null;
+        }
+        const topCard = this.getTopCard();
+        if (!topCard) {
+            this.debugLog('DRAW', `Draw failed: no top card available`);
+            return null;
+        }
+        this.debugLog('DRAW', `Top card: ${topCard.color} ${topCard.value}`);
+        // Check if player has playable cards
+        const playableCards = player.getPlayableCards(topCard, this.wildColor || undefined);
+        this.debugLog('DRAW', `${player.name} has ${playableCards.length} playable cards:`, playableCards.map(c => `${c.color} ${c.value}`));
+        // Log why player is drawing (no playable cards vs choice)
+        if (playableCards.length === 0) {
+            this.debugLog('DRAW', `${player.name} must draw - no playable cards available`);
+        }
+        else {
+            this.debugLog('DRAW', `${player.name} choosing to draw despite having ${playableCards.length} playable cards`);
+        }
+        // Only forbid drawing if that house rule is enabled
+        if (!this.rules.allowDrawWhenPlayable && playableCards.length > 0) {
+            this.debugLog('DRAW', `Draw blocked: player has playable cards and allowDrawWhenPlayable=false`);
+            this.log("Cannot draw - player has playable cards and allowDrawWhenPlayable=false");
+            return null; // Cannot draw when playable cards exist
+        }
+        const card = this.deck.drawCard();
+        if (this.rules.debugMode) {
+            console.log(`[DECK] Draw result: ${card ? `${card.color} ${card.value}` : 'null'}`);
+        }
+        if (card) {
+            this.debugLog('DRAW', `${player.name} successfully drew: ${card.color} ${card.value}`);
+            player.addCards([card]);
+            // Log updated hand after drawing
+            this.debugLog('DRAW', `${player.name} hand after drawing:`, {
+                handSize: player.getHandSize(),
+                cards: player.getHand().map(c => `${c.color} ${c.value}`),
+                newlyDrawnCard: `${card.color} ${card.value}`,
+                isPlayable: card.canPlayOn(topCard, this.wildColor || undefined, [])
+            });
+            // Check if the drawn card is playable
+            const drawnCardPlayable = card.canPlayOn(topCard, this.wildColor || undefined, []);
+            this.debugLog('DRAW', `Drawn card playable: ${drawnCardPlayable}`);
+            // Handle drawn card according to rules
+            if (drawnCardPlayable && this.rules.mustPlayIfDrawable) {
+                // Auto-play the drawn card if rule is enabled
+                this.log("Auto-playing drawn card due to mustPlayIfDrawable rule");
+                // Capture the active color BEFORE any mutations for Wild Draw Four challenges
+                const activeColorBeforePlay = this.wildColor || this.getTopCard().color;
+                const playedCard = player.removeCard(card.id);
+                if (playedCard) {
+                    this.deck.playCard(playedCard);
+                    // Store the active color ONLY when playing a Wild Draw Four
+                    // This ensures previousActiveColor is accurate for challenge validation
+                    if (playedCard.value === "Wild Draw Four") {
+                        this.previousActiveColor = activeColorBeforePlay;
+                    }
+                    // Emit card drawn and auto-played event
+                    this.emitEvent('onCardDrawn', player, card, true);
+                    // Handle UNO call for drawn card
+                    if (player.hasOneCard()) {
+                        // For AI players, automatically call UNO when they have one card
+                        const shouldAutoCallUno = !player.isHuman;
+                        if (shouldAutoCallUno || player.getHasCalledUno()) {
+                            this.lastPlayerWithOneCard = player;
+                            this.clearUnoChallengeTimer(player.id);
+                            if (shouldAutoCallUno) {
+                                player.callUno();
+                                this.emitEvent('onUnoCalled', player);
+                            }
+                        }
+                        else {
+                            this.startUnoChallengeTimer(player);
+                        }
+                    }
+                    // Check for win
+                    if (player.isEmpty()) {
+                        this.endRound(player);
+                        return card;
+                    }
+                    // Reset consecutive skips counter since a card was auto-played
+                    this.consecutiveSkips = 0;
+                    this.lastPlayerWhoSkipped = null;
+                    // Handle special card effects
+                    if (playedCard.isWildCard()) {
+                        // For auto-played Wild cards, we need to handle color choice
+                        if (player.isHuman) {
+                            // Human player - set phase to choosing_color and wait for input
+                            this.phase = "choosing_color";
+                            this.debugLog('DRAW', 'Auto-played Wild card - waiting for human color choice');
+                            return card;
+                        }
+                        else {
+                            // AI player - use AI's color choice
+                            const aiChosenColor = player.chooseWildColor();
+                            this.handleCardEffect(playedCard, aiChosenColor);
+                        }
+                    }
+                    else {
+                        // Non-Wild card - handle normally
+                        this.handleCardEffect(playedCard);
+                    }
+                    // Move to next player (only if not waiting for color choice)
+                    if (this.phase !== "choosing_color") {
+                        this.nextTurn();
+                    }
+                    return card;
+                }
+            }
+            else {
+                // Emit card drawn but not auto-played event
+                this.emitEvent('onCardDrawn', player, card, false);
+            }
+        }
+        else {
+            // CRITICAL FIX: Handle reshuffle edge case - no cards can be drawn
+            this.debugLog('DRAW', `No cards can be drawn - deck empty and cannot reshuffle`);
+            this.log("No cards can be drawn - checking for deadlock immediately");
+            // Track consecutive skips for deadlock detection
+            this.consecutiveSkips++;
+            this.lastPlayerWhoSkipped = playerId;
+            this.debugLog('DEADLOCK', `Consecutive skips increased to ${this.consecutiveSkips}, last player who skipped: ${playerId}`);
+            // CRITICAL FIX: Check for deadlock immediately and resolve it before any turn progression
+            this.debugLog('DEADLOCK', 'Checking for deadlock after failed draw...');
+            if (this.isDeadlock()) {
+                this.debugLog('DEADLOCK', `Deadlock detected, using resolution strategy: ${this.rules.deadlockResolution}`);
+                this.logGameSituation(); // Log detailed game situation when deadlock is detected
+                // CRITICAL FIX: Resolve deadlock immediately and return null to prevent any further processing
+                if (this.rules.deadlockResolution === 'force_reshuffle') {
+                    this.resolveDeadlockWithReshuffle();
+                }
+                else {
+                    this.resolveDeadlock();
+                }
+                // CRITICAL FIX: Return null immediately after deadlock resolution to prevent any loop
+                return null;
+            }
+            // CRITICAL FIX: Only proceed to next turn if no deadlock was detected
+            this.debugLog('DRAW', 'No deadlock detected, proceeding to next turn');
+            this.nextTurn();
+            return null;
+        }
+        this.nextTurn();
+        return card;
+    }
+    callUno(playerId) {
+        const player = this.players.find((p) => p.id === playerId);
+        if (!player)
+            return false;
+        // Allow calling UNO even if player has more than one card (for false UNO challenges)
+        player.callUno();
+        return true;
+    }
+    // Challenge a player for not calling UNO
+    challengeUno(challengerId, targetPlayerId) {
+        const challenger = this.players.find((p) => p.id === challengerId);
+        const targetPlayer = this.players.find((p) => p.id === targetPlayerId);
+        if (!challenger || !targetPlayer)
+            return false;
+        // Check if target player has one card and didn't call UNO
+        if (targetPlayer.shouldBePenalizedForUno()) {
+            // Target player gets penalty (draw 2 cards)
+            const result = this.deck.drawCards(2);
+            targetPlayer.addCards(result.drawnCards);
+            targetPlayer.resetUnoCall();
+            // Cancel the timer to prevent double penalty
+            this.clearUnoChallengeTimer(targetPlayerId);
+            this.log("UNO challenge successful - penalty applied to", targetPlayer.name);
+            // Emit UNO challenge event
+            this.emitEvent('onUnoChallenged', challenger, targetPlayer, true);
+            return true;
+        }
+        this.log("UNO challenge failed - no penalty applied");
+        // Emit UNO challenge event (failed)
+        this.emitEvent('onUnoChallenged', challenger, targetPlayer, false);
+        return false;
+    }
+    // Challenge a player for making a false UNO call (calling UNO when they have more than one card)
+    challengeFalseUno(challengerId, targetPlayerId) {
+        const challenger = this.players.find((p) => p.id === challengerId);
+        const targetPlayer = this.players.find((p) => p.id === targetPlayerId);
+        if (!challenger || !targetPlayer)
+            return false;
+        // Check if target player called UNO but has more than one card
+        if (targetPlayer.getHasCalledUno() && !targetPlayer.hasOneCard()) {
+            // Target player gets penalty (draw 2 cards) for false UNO call
+            const result = this.deck.drawCards(2);
+            targetPlayer.addCards(result.drawnCards);
+            targetPlayer.resetUnoCall();
+            this.log("False UNO challenge successful - penalty applied to", targetPlayer.name);
+            // Emit UNO challenge event (successful false UNO challenge)
+            this.emitEvent('onUnoChallenged', challenger, targetPlayer, true);
+            return true;
+        }
+        this.log("False UNO challenge failed - no penalty applied");
+        // Emit UNO challenge event (failed false UNO challenge)
+        this.emitEvent('onUnoChallenged', challenger, targetPlayer, false);
+        return false;
+    }
+    // Check if a player can be challenged for UNO
+    canChallengeUno(targetPlayerId) {
+        const targetPlayer = this.players.find((p) => p.id === targetPlayerId);
+        if (!targetPlayer)
+            return false;
+        return targetPlayer.shouldBePenalizedForUno();
+    }
+    // Check if a player can be challenged for false UNO call
+    canChallengeFalseUno(targetPlayerId) {
+        const targetPlayer = this.players.find((p) => p.id === targetPlayerId);
+        if (!targetPlayer)
+            return false;
+        return targetPlayer.getHasCalledUno() && !targetPlayer.hasOneCard();
+    }
+    // Challenge a Wild Draw Four play
+    challengeWildDrawFour(challengerId, targetPlayerId) {
+        const challenger = this.players.find((p) => p.id === challengerId);
+        const targetPlayer = this.players.find((p) => p.id === targetPlayerId);
+        const topCard = this.getTopCard();
+        if (!challenger || !targetPlayer)
+            return false;
+        if (!topCard || topCard.value !== "Wild Draw Four")
+            return false;
+        if (!this.previousActiveColor)
+            return false;
+        // Check if target still has any card matching the *previous* active color
+        const hasMatchingColor = targetPlayer.getHand().some((c) => c.color === this.previousActiveColor);
+        if (hasMatchingColor) {
+            // Challenge succeeds: target player penalized
+            const result = this.deck.drawCards(4);
+            targetPlayer.addCards(result.drawnCards);
+            // Clear the draw penalty since the challenge resolved it
+            this.drawPenalty = 0;
+            // Reset skipNext so the challenger can play next (they successfully challenged)
+            this.skipNext = false;
+            this.emitEvent("onWildDrawFourChallenged", challenger, targetPlayer, true);
+            this.log("Wild Draw Four challenge SUCCESS -", targetPlayer.name, "penalized");
+            return true;
+        }
+        else {
+            // Challenge fails: challenger penalized
+            const result = this.deck.drawCards(6);
+            challenger.addCards(result.drawnCards);
+            // Clear the draw penalty since the 6-card penalty fulfills the original 4-card penalty
+            this.drawPenalty = 0;
+            // Keep skipNext = true so the challenger's turn is skipped (they failed the challenge)
+            this.emitEvent("onWildDrawFourChallenged", challenger, targetPlayer, false);
+            this.log("Wild Draw Four challenge FAILED -", challenger.name, "penalized");
+            return false;
+        }
+    }
+    // Check if Wild Draw Four can be challenged
+    canChallengeWildDrawFour(targetPlayerId) {
+        const targetPlayer = this.players.find(p => p.id === targetPlayerId);
+        const topCard = this.getTopCard();
+        return !!(targetPlayer && topCard?.value === "Wild Draw Four" && this.previousActiveColor);
+    }
+    // Check if a player can jump in with a specific card
+    canJumpIn(playerId, cardId) {
+        if (!this.rules.enableJumpIn || this.phase !== "playing")
+            return false;
+        const player = this.players.find(p => p.id === playerId);
+        const topCard = this.getTopCard();
+        if (!player || !topCard)
+            return false;
+        // Can't jump in on Wild cards - their state is unresolved until a color is chosen
+        if (topCard.color === 'wild')
+            return false;
+        // Can't jump in on your own turn
+        if (this.getCurrentPlayer().id === playerId)
+            return false;
+        const card = player.getHand().find(c => c.id === cardId);
+        if (!card)
+            return false;
+        // Card must be an exact match (same color and value)
+        return card.color === topCard.color && card.value === topCard.value;
+    }
+    // Get all cards a player can use to jump in
+    getJumpInCards(playerId) {
+        if (!this.rules.enableJumpIn || this.phase !== "playing")
+            return [];
+        const player = this.players.find(p => p.id === playerId);
+        const topCard = this.getTopCard();
+        if (!player || !topCard || this.getCurrentPlayer().id === playerId)
+            return [];
+        // Can't jump in on Wild cards - their state is unresolved until a color is chosen
+        if (topCard.color === 'wild')
+            return [];
+        return player.getHand().filter(card => card.color === topCard.color && card.value === topCard.value);
+    }
+    nextTurn() {
+        this.debugLog('TURN', 'Processing next turn');
+        if (this.phase === "game_over") {
+            this.debugLog('TURN', 'Game over, cannot proceed to next turn');
+            return;
+        }
+        const previousPlayer = this.getCurrentPlayer();
+        let step = this.direction === "clockwise" ? 1 : -1;
+        if (this.skipNext) {
+            this.debugLog('TURN', `Skipping next player due to skip effect`);
+            this.currentPlayerIndex = (this.currentPlayerIndex + step + this.players.length) % this.players.length;
+            this.skipNext = false;
+        }
+        this.currentPlayerIndex = (this.currentPlayerIndex + step + this.players.length) % this.players.length;
+        const current = this.getCurrentPlayer();
+        this.debugLog('TURN', `Turn changed from ${previousPlayer.name} to ${current.name} (direction: ${this.direction})`);
+        // Apply pending draw penalty
+        if (this.drawPenalty > 0) {
+            this.debugLog('TURN', `${current.name} must draw ${this.drawPenalty} cards as penalty`);
+            const result = this.deck.drawCards(this.drawPenalty);
+            current.addCards(result.drawnCards);
+            this.log(`${current.name} drew ${result.drawnCards.length} as penalty (requested: ${this.drawPenalty})`);
+            this.debugLog('TURN', `Penalty cards drawn: ${result.drawnCards.map(c => `${c.color} ${c.value}`).join(', ')}`);
+            // Check if deck was exhausted during penalty
+            if (result.isExhausted && result.drawnCards.length < this.drawPenalty) {
+                this.debugLog('DEADLOCK', `Deck exhausted during penalty draw. Drew ${result.drawnCards.length}/${this.drawPenalty} cards.`);
+                this.log(`Deck exhausted during penalty - resolving deadlock`);
+                // Resolve deadlock immediately since no more cards can be drawn
+                if (this.rules.deadlockResolution === 'force_reshuffle') {
+                    this.resolveDeadlockWithReshuffle();
+                }
+                else {
+                    this.resolveDeadlock();
+                }
+                return; // Exit early to prevent further processing
+            }
+            this.drawPenalty = 0;
+        }
+        // Increment turn counter for deadlock detection
+        this.turnCount++;
+        this.debugLog('TURN', `Turn counter incremented to ${this.turnCount}`);
+        // Update game state history for enhanced deadlock detection
+        this.updateGameStateHistory();
+        this.phase = "playing";
+        this.emitEvent("onTurnChange", current, this.direction);
+        this.logGameState('after turn change');
+    }
+    endRound(winner) {
+        this.roundWinner = winner;
+        this.phase = "game_over";
+        // Calculate points
+        let totalPoints = 0;
+        this.players.forEach((player) => {
+            if (player.id !== winner.id) {
+                totalPoints += player.calculateHandPoints();
+            }
+        });
+        winner.addScore(totalPoints);
+        this.log("Round ended - winner:", winner.name, "points earned:", totalPoints);
+        // Create scores map for event
+        const scores = new Map();
+        this.players.forEach(player => {
+            scores.set(player.id, player.getScore());
+        });
+        // Emit round end event
+        this.emitEvent('onRoundEnd', winner, totalPoints, scores);
+        // Check for game winner (configurable target score)
+        if (winner.getScore() >= this.rules.targetScore) {
+            this.winner = winner;
+            this.log("Game won by:", winner.name, "final score:", winner.getScore());
+            // Emit game end event
+            this.emitEvent('onGameEnd', winner, scores);
+        }
+        else {
+            // Start new round if target score not reached
+            this.log("Target score not reached, starting new round");
+            setTimeout(() => {
+                this.startNewRound();
+            }, 1000); // Small delay for UI to show round results
+        }
+    }
+    // Getters
+    getCurrentPlayer() {
+        return this.players[this.currentPlayerIndex];
+    }
+    getPlayers() {
+        return [...this.players];
+    }
+    getTopCard() {
+        return this.deck.getTopCard();
+    }
+    getDeckCount() {
+        return this.deck.getRemainingCount();
+    }
+    getDiscardPile() {
+        return this.deck.getDiscardPile();
+    }
+    getDirection() {
+        return this.direction;
+    }
+    getWildColor() {
+        return this.wildColor;
+    }
+    getPreviousActiveColor() {
+        return this.previousActiveColor;
+    }
+    getPhase() {
+        return this.phase;
+    }
+    getDrawPenalty() {
+        return this.drawPenalty;
+    }
+    getLastActionCard() {
+        return this.lastActionCard;
+    }
+    getLastPlayerWithOneCard() {
+        return this.lastPlayerWithOneCard;
+    }
+    getWinner() {
+        return this.winner;
+    }
+    getRoundWinner() {
+        return this.roundWinner;
+    }
+    getRules() {
+        return { ...this.rules };
+    }
+    // Get deadlock detection information for debugging
+    getDeadlockInfo() {
+        return {
+            consecutiveSkips: this.consecutiveSkips,
+            lastPlayerWhoSkipped: this.lastPlayerWhoSkipped,
+            turnCount: this.turnCount,
+            isDeadlock: this.isDeadlock(),
+            deckCount: this.deck.getRemainingCount(),
+            discardPileCount: this.deck.getDiscardPile().length,
+            stateHistoryLength: this.gameStateHistory.length,
+            currentStateHash: this.gameStateHistory.length > 0 ? this.gameStateHistory[this.gameStateHistory.length - 1] : 'none',
+            playLoopCycleDetected: this.detectPlayLoopCycle(),
+            resourceExhaustionCycleDetected: this.detectResourceExhaustionCycle(),
+        };
+    }
+    // Get detailed game statistics for analysis
+    getDetailedGameStats() {
+        const topCard = this.getTopCard();
+        const actionCards = this.eventLog.filter(log => log.event === 'onActionCardPlayed').length;
+        const wildCards = this.eventLog.filter(log => log.event === 'onCardPlayed' && log.data && log.data[1] && log.data[1].color === 'wild').length;
+        const unoCalls = this.eventLog.filter(log => log.event === 'onUnoCalled').length;
+        const challenges = this.eventLog.filter(log => log.event === 'onUnoChallenged' || log.event === 'onWildDrawFourChallenged').length;
+        return {
+            gameDuration: this.calculateGameDuration(),
+            totalTurns: this.turnCount,
+            cardsPlayed: this.eventLog.filter(log => log.event === 'onCardPlayed').length,
+            cardsDrawn: this.eventLog.filter(log => log.event === 'onCardDrawn').length,
+            actionCards,
+            wildCards,
+            unoCalls,
+            challenges,
+            currentDirection: this.direction,
+            topCard: topCard ? `${topCard.color} ${topCard.value}` : 'None',
+            players: this.players.length,
+            playerDetails: this.players.map(p => ({
+                name: p.name,
+                handSize: p.getHandSize(),
+                cards: p.getHand().map(c => `${c.color} ${c.value}`),
+                playableCards: topCard ? p.getPlayableCards(topCard, this.wildColor || undefined).map(c => `${c.color} ${c.value}`) : [],
+                score: p.getScore()
+            })),
+            deckInfo: {
+                remainingCards: this.deck.getRemainingCount(),
+                discardPileCount: this.deck.getDiscardPile().length,
+                topCard: topCard ? `${topCard.color} ${topCard.value}` : 'None'
+            },
+            deadlockInfo: this.getDeadlockInfo()
+        };
+    }
+    // Calculate game duration (placeholder - would need start time tracking)
+    calculateGameDuration() {
+        // This would need to be implemented with actual start time tracking
+        return "Unknown";
+    }
+    // Log current game situation for analysis
+    logGameSituation() {
+        if (!this.rules.debugMode)
+            return;
+        const stats = this.getDetailedGameStats();
+        console.log('\n=== GAME SITUATION ANALYSIS ===');
+        console.log(`Turn: ${stats.totalTurns}`);
+        console.log(`Current Player: ${this.getCurrentPlayer().name}`);
+        console.log(`Direction: ${stats.currentDirection}`);
+        console.log(`Top Card: ${stats.topCard}`);
+        console.log(`Deck: ${stats.deckInfo.remainingCards} cards remaining`);
+        console.log(`Discard Pile: ${stats.deckInfo.discardPileCount} cards`);
+        console.log(`Consecutive Skips: ${stats.deadlockInfo.consecutiveSkips}`);
+        console.log(`Is Deadlock: ${stats.deadlockInfo.isDeadlock}`);
+        console.log(`State History Length: ${stats.deadlockInfo.stateHistoryLength}`);
+        console.log(`Current State Hash: ${stats.deadlockInfo.currentStateHash}`);
+        console.log(`Play Loop Cycle Detected: ${stats.deadlockInfo.playLoopCycleDetected}`);
+        console.log(`Resource Exhaustion Cycle Detected: ${stats.deadlockInfo.resourceExhaustionCycleDetected}`);
+        console.log('\n=== PLAYER DETAILS ===');
+        stats.playerDetails.forEach(player => {
+            console.log(`${player.name}: ${player.handSize} cards`);
+            console.log(`  Cards: ${player.cards.join(', ')}`);
+            console.log(`  Playable: ${player.playableCards.join(', ')}`);
+            console.log(`  Score: ${player.score}`);
+        });
+        console.log('\n=== GAME STATISTICS ===');
+        console.log(`Cards Played: ${stats.cardsPlayed}`);
+        console.log(`Cards Drawn: ${stats.cardsDrawn}`);
+        console.log(`Action Cards: ${stats.actionCards}`);
+        console.log(`Wild Cards: ${stats.wildCards}`);
+        console.log(`UNO Calls: ${stats.unoCalls}`);
+        console.log(`Challenges: ${stats.challenges}`);
+        console.log('================================\n');
+    }
+    // Generate a hash representing the current strategic game state
+    // This focuses on the strategic aspects that matter for deadlock detection:
+    // - Player hand sizes (sorted to be order-independent)
+    // - Top card color and value
+    // - Current player index
+    // - Game direction
+    // - Wild color (if any)
+    generateGameStateHash() {
+        const topCard = this.getTopCard();
+        const topCardInfo = topCard ? `${topCard.color}-${topCard.value}` : 'none';
+        // Sort hand sizes to make the hash order-independent
+        const handSizes = this.players.map(p => p.getHandSize()).sort((a, b) => a - b);
+        const stateComponents = [
+            `hands:${handSizes.join(',')}`,
+            `top:${topCardInfo}`,
+            `player:${this.currentPlayerIndex}`,
+            `dir:${this.direction}`,
+            `wild:${this.wildColor || 'none'}`
+        ];
+        return stateComponents.join('|');
+    }
+    // Generate a hash for resource exhaustion detection (includes deck/discard counts)
+    generateResourceStateHash() {
+        const topCard = this.getTopCard();
+        const topCardInfo = topCard ? `${topCard.color}-${topCard.value}` : 'none';
+        // Sort hand sizes to make the hash order-independent
+        const handSizes = this.players.map(p => p.getHandSize()).sort((a, b) => a - b);
+        const stateComponents = [
+            `hands:${handSizes.join(',')}`,
+            `top:${topCardInfo}`,
+            `player:${this.currentPlayerIndex}`,
+            `dir:${this.direction}`,
+            `wild:${this.wildColor || 'none'}`,
+            `deck:${this.deck.getRemainingCount()}`,
+            `discard:${this.deck.getDiscardPile().length}`
+        ];
+        return stateComponents.join('|');
+    }
+    // Add current game state to history and check for cycles
+    updateGameStateHistory() {
+        const currentStateHash = this.generateGameStateHash();
+        const currentResourceHash = this.generateResourceStateHash();
+        // Add to play-loop detection history (strategic state only)
+        this.gameStateHistory.push(currentStateHash);
+        // Add to resource exhaustion detection history (includes deck/discard counts)
+        this.resourceStateHistory.push(currentResourceHash);
+        // Keep only the most recent states
+        if (this.gameStateHistory.length > this.MAX_STATE_HISTORY) {
+            this.gameStateHistory = this.gameStateHistory.slice(-this.MAX_STATE_HISTORY);
+        }
+        if (this.resourceStateHistory.length > this.MAX_STATE_HISTORY) {
+            this.resourceStateHistory = this.resourceStateHistory.slice(-this.MAX_STATE_HISTORY);
+        }
+        this.debugLog('STATE_HASH', `Current strategic state hash: ${currentStateHash}`);
+        this.debugLog('RESOURCE_HASH', `Current resource state hash: ${currentResourceHash}`);
+    }
+    // Check if the current strategic state indicates a play-loop cycle
+    detectPlayLoopCycle() {
+        if (this.gameStateHistory.length < this.DEADLOCK_CYCLE_THRESHOLD) {
+            return false;
+        }
+        const currentState = this.gameStateHistory[this.gameStateHistory.length - 1];
+        const occurrences = this.gameStateHistory.filter(state => state === currentState).length;
+        if (occurrences >= this.DEADLOCK_CYCLE_THRESHOLD) {
+            this.debugLog('DEADLOCK', `Play-loop cycle detected: strategic state ${currentState} has appeared ${occurrences} times`);
+            return true;
+        }
+        return false;
+    }
+    // Check if the current resource state indicates a resource exhaustion cycle
+    detectResourceExhaustionCycle() {
+        if (this.resourceStateHistory.length < this.DEADLOCK_CYCLE_THRESHOLD) {
+            return false;
+        }
+        const currentResourceState = this.resourceStateHistory[this.resourceStateHistory.length - 1];
+        const occurrences = this.resourceStateHistory.filter(state => state === currentResourceState).length;
+        if (occurrences >= this.DEADLOCK_CYCLE_THRESHOLD) {
+            this.debugLog('DEADLOCK', `Resource exhaustion cycle detected: resource state ${currentResourceState} has appeared ${occurrences} times`);
+            return true;
+        }
+        return false;
+    }
+    // Check for deadlock conditions
+    isDeadlock() {
+        this.debugLog('DEADLOCK', 'Checking for deadlock conditions...');
+        // ENHANCEMENT: Check for play-loop cycles (strategic state only)
+        // This catches scenarios where players are trading the same cards back and forth
+        if (this.detectPlayLoopCycle()) {
+            this.debugLog('DEADLOCK', 'DEADLOCK DETECTED: Play-loop cycle detected - players are stuck in a strategic loop');
+            this.log("DEADLOCK DETECTED: Play-loop cycle detected - players are stuck in a strategic loop");
+            return true;
+        }
+        // ENHANCEMENT: Check for resource exhaustion cycles (includes deck/discard counts)
+        // This catches scenarios where the game is stuck due to resource constraints
+        if (this.detectResourceExhaustionCycle()) {
+            this.debugLog('DEADLOCK', 'DEADLOCK DETECTED: Resource exhaustion cycle detected - game is stuck due to resource constraints');
+            this.log("DEADLOCK DETECTED: Resource exhaustion cycle detected - game is stuck due to resource constraints");
+            return true;
+        }
+        // CRITICAL FIX: Enhanced deadlock detection for the specific AI loop scenario
+        // Check if deck is empty and discard pile has ≤1 card (the exact scenario from the bug report)
+        if (this.deck.getRemainingCount() === 0 && this.deck.getDiscardPile().length <= 1) {
+            this.debugLog('DEADLOCK', 'Empty deck detected, checking if any player can play top card');
+            // Check if any player can play the top card
+            const topCard = this.getTopCard();
+            if (!topCard) {
+                // CRITICAL FIX: If there's no top card and deck is empty, this is a deadlock
+                // This handles the case where both deck and discard pile are empty
+                this.debugLog('DEADLOCK', 'DEADLOCK DETECTED: No top card available, deck empty, discard pile empty');
+                this.log("DEADLOCK DETECTED: No top card available, deck empty, discard pile empty");
+                return true;
+            }
+            const playerPlayability = this.players.map(player => {
+                const playableCards = player.getPlayableCards(topCard, this.wildColor || undefined);
+                return {
+                    player: player.name,
+                    canPlay: playableCards.length > 0,
+                    playableCount: playableCards.length,
+                    playableCards: playableCards.map(c => `${c.color} ${c.value}`)
+                };
+            });
+            this.debugLog('DEADLOCK', 'Player playability analysis:', playerPlayability);
+            const canAnyPlayerPlay = playerPlayability.some(p => p.canPlay);
+            // CRITICAL FIX: If no player can play and deck is empty, we have a deadlock
+            // This is the exact scenario described in the bug report
+            if (!canAnyPlayerPlay) {
+                this.debugLog('DEADLOCK', 'DEADLOCK DETECTED: No players can play, deck empty, discard pile has ≤1 card');
+                this.log("DEADLOCK DETECTED: No players can play, deck empty, discard pile has ≤1 card");
+                return true;
+            }
+            else {
+                this.debugLog('DEADLOCK', 'At least one player can play, no deadlock');
+            }
+        }
+        // CRITICAL FIX: Enhanced consecutive skips detection
+        // Check for consecutive skips equal to number of players (full cycle with no progress)
+        if (this.consecutiveSkips >= this.players.length) {
+            this.debugLog('DEADLOCK', `DEADLOCK DETECTED: Full cycle completed with no cards played (${this.consecutiveSkips} skips >= ${this.players.length} players)`);
+            this.log("DEADLOCK DETECTED: Full cycle completed with no cards played");
+            return true;
+        }
+        // CRITICAL FIX: Enhanced timeout detection for AI loop prevention
+        // Check for turn timeout (safety mechanism) - reduced from 200 to 100 for faster detection
+        if (this.turnCount > 100) {
+            this.debugLog('DEADLOCK', `DEADLOCK DETECTED: Turn count exceeded 100 (current: ${this.turnCount})`);
+            this.log("DEADLOCK DETECTED: Turn count exceeded 100");
+            return true;
+        }
+        // CRITICAL FIX: Additional check for rapid consecutive failed draws
+        // If the same player has been the last to skip multiple times in a row, it might indicate a loop
+        if (this.consecutiveSkips >= 3 && this.lastPlayerWhoSkipped) {
+            const currentPlayer = this.getCurrentPlayer();
+            if (currentPlayer.id === this.lastPlayerWhoSkipped) {
+                this.debugLog('DEADLOCK', `DEADLOCK DETECTED: Same player (${currentPlayer.name}) has been skipping repeatedly`);
+                this.log("DEADLOCK DETECTED: Same player has been skipping repeatedly");
+                return true;
+            }
+        }
+        this.debugLog('DEADLOCK', 'No deadlock conditions detected');
+        return false;
+    }
+    // Resolve deadlock by ending the round
+    resolveDeadlock() {
+        this.debugLog('RESOLUTION', 'Resolving deadlock by ending round');
+        this.log("Resolving deadlock - ending round");
+        // Analyze all players for winner selection
+        const playerAnalysis = this.players.map(player => ({
+            name: player.name,
+            handSize: player.getHandSize(),
+            score: player.getScore(),
+            handCards: player.getHand().map(c => `${c.color} ${c.value}`)
+        }));
+        this.debugLog('RESOLUTION', 'Player analysis for winner selection:', playerAnalysis);
+        // Find player with fewest cards (winner)
+        let winner = this.players[0];
+        let minCards = winner.getHandSize();
+        for (const player of this.players) {
+            const handSize = player.getHandSize();
+            if (handSize < minCards) {
+                minCards = handSize;
+                winner = player;
+            }
+        }
+        this.debugLog('RESOLUTION', `Initial winner candidate: ${winner.name} with ${minCards} cards`);
+        // If tied, choose player with lowest points
+        const tiedPlayers = this.players.filter(player => player.getHandSize() === minCards);
+        if (tiedPlayers.length > 1) {
+            this.debugLog('RESOLUTION', `Tie detected with ${tiedPlayers.length} players having ${minCards} cards each`);
+            const tieAnalysis = tiedPlayers.map(p => ({ name: p.name, score: p.getScore() }));
+            this.debugLog('RESOLUTION', 'Tie analysis:', tieAnalysis);
+            winner = tiedPlayers.reduce((a, b) => a.getScore() < b.getScore() ? a : b);
+            this.debugLog('RESOLUTION', `Tie broken: ${winner.name} wins with lowest score (${winner.getScore()})`);
+        }
+        this.debugLog('RESOLUTION', `Final winner: ${winner.name} with ${minCards} cards`);
+        this.log(`Deadlock resolved: ${winner.name} wins with ${minCards} cards`);
+        this.endRound(winner);
+    }
+    // Alternative deadlock resolution: force reshuffle and continue
+    resolveDeadlockWithReshuffle() {
+        this.log("Resolving deadlock with force reshuffle");
+        // Force reshuffle the discard pile
+        this.deck.forceReshuffle();
+        // Reset deadlock counters
+        this.consecutiveSkips = 0;
+        this.lastPlayerWhoSkipped = null;
+        // Reset state history for enhanced deadlock detection
+        this.gameStateHistory = [];
+        this.resourceStateHistory = [];
+        this.log("Deadlock resolved with force reshuffle - game continues");
+    }
+    // Get complete game state snapshot for UI/multiplayer sync
+    getState() {
+        return {
+            players: this.players.map((player, index) => ({
+                id: player.id,
+                name: player.name,
+                isHuman: player.isHuman,
+                handSize: player.getHandSize(),
+                score: player.getScore(),
+                hasCalledUno: player.getHasCalledUno(),
+                hasOneCard: player.hasOneCard(),
+                turnOrder: index, // Add turn order for easier UI
+            })),
+            currentPlayer: {
+                id: this.getCurrentPlayer().id,
+                name: this.getCurrentPlayer().name,
+                turnOrder: this.currentPlayerIndex,
+            },
+            gameState: {
+                phase: this.phase,
+                direction: this.direction,
+                wildColor: this.wildColor,
+                drawPenalty: this.drawPenalty,
+                skipNext: this.skipNext,
+                deckCount: this.getDeckCount(),
+                topCard: this.getTopCard() ? {
+                    color: this.getTopCard().color,
+                    value: this.getTopCard().value,
+                } : null,
+                lastActionCard: this.lastActionCard ? {
+                    color: this.lastActionCard.color,
+                    value: this.lastActionCard.value,
+                } : null,
+                discardPile: this.rules.showDiscardPile ? this.deck.getDiscardPile().map(card => ({
+                    color: card.color,
+                    value: card.value,
+                })) : [],
+                jumpInEnabled: this.rules.enableJumpIn,
+            },
+            roundInfo: {
+                roundWinner: this.roundWinner ? {
+                    id: this.roundWinner.id,
+                    name: this.roundWinner.name,
+                } : null,
+                gameWinner: this.winner ? {
+                    id: this.winner.id,
+                    name: this.winner.name,
+                } : null,
+                isGameOver: this.isGameOver(),
+            },
+            rules: this.getRules(),
+        };
+    }
+    // Simplified state export for AI/clients
+    getSimpleState() {
+        return {
+            players: this.players.map((p) => ({
+                id: p.id,
+                name: p.name,
+                handSize: p.getHandSize(),
+                score: p.getScore(),
+                isHuman: p.isHuman,
+            })),
+            currentPlayerId: this.getCurrentPlayer().id,
+            direction: this.direction,
+            topCard: this.getTopCard(),
+            wildColor: this.wildColor,
+            phase: this.phase,
+            discardPile: this.rules.showDiscardPile ? this.deck.getDiscardPile().map(card => ({
+                color: card.color,
+                value: card.value,
+            })) : [],
+        };
+    }
+    // Get player's hand for UI sync
+    getPlayerHand(playerId) {
+        const player = this.players.find(p => p.id === playerId);
+        return player ? player.getHand() : null;
+    }
+    // Get event log for replay/debugging
+    getEventLog() {
+        return [...this.eventLog];
+    }
+    // Clear event log (useful for new games)
+    clearEventLog() {
+        this.eventLog = [];
+    }
+    isGameOver() {
+        return this.phase === "game_over";
+    }
+    // Start a new round (keep scores, reset hands and deck)
+    startNewRound() {
+        this.log("Starting new round");
+        // Reset game state
+        this.deck = new UnoDeck();
+        this.currentPlayerIndex = 0;
+        this.direction = "clockwise";
+        this.wildColor = null;
+        this.previousActiveColor = null;
+        this.phase = "playing";
+        this.roundWinner = null;
+        this.skipNext = false;
+        this.drawPenalty = 0;
+        this.lastPlayerWithOneCard = null;
+        this.lastActionCard = null;
+        // Reset deadlock detection counters
+        this.consecutiveSkips = 0;
+        this.lastPlayerWhoSkipped = null;
+        this.turnCount = 0;
+        // Reset state history for enhanced deadlock detection
+        this.gameStateHistory = [];
+        // Clear all UNO challenge timers
+        this.unoChallengeTimers.forEach((timer) => clearTimeout(timer));
+        this.unoChallengeTimers.clear();
+        // Reset all players
+        this.players.forEach((player) => {
+            player.resetUnoCall();
+        });
+        // Deal new hands
+        this.dealInitialCards();
+        this.startGame();
+        this.log("New round started");
+    }
+    // Restart the entire game (reset scores too)
+    restartGame() {
+        this.log("Restarting entire game");
+        // Reset all player scores
+        this.players.forEach((player) => {
+            player.addScore(-player.getScore()); // Reset score to 0
+        });
+        this.winner = null;
+        this.startNewRound();
+        this.log("Game restarted");
+    }
+    // AI turn logic
+    playAITurn() {
+        const currentPlayer = this.getCurrentPlayer();
+        this.debugLog('AI', `AI turn initiated for ${currentPlayer.name}`);
+        this.log("playAITurn - current player:", currentPlayer.name, "isHuman:", currentPlayer.isHuman, "phase:", this.phase);
+        if (currentPlayer.isHuman || this.phase !== "playing") {
+            this.debugLog('AI', `AI turn blocked - isHuman: ${currentPlayer.isHuman}, phase: ${this.phase}`);
+            this.log("playAITurn early return - isHuman:", currentPlayer.isHuman, "phase:", this.phase);
+            return false;
+        }
+        // Add realistic AI delay based on difficulty
+        const delay = this.getAIDelay();
+        this.debugLog('AI', `AI thinking for ${delay}ms (difficulty: ${this.rules.aiDifficulty})`);
+        this.log("AI thinking for", delay, "ms...");
+        setTimeout(() => {
+            this.executeAITurn(currentPlayer);
+        }, delay);
+        return true; // Return true to indicate AI turn is in progress
+    }
+    // Pure AI decision function (for testing/simulation)
+    decideAITurn() {
+        const currentPlayer = this.getCurrentPlayer();
+        const topCard = this.getTopCard();
+        if (!topCard)
+            return null;
+        // Try to play a card
+        const cardToPlay = this.chooseAICard(currentPlayer, topCard);
+        if (cardToPlay) {
+            let chosenColor;
+            if (cardToPlay.isWildCard()) {
+                chosenColor = currentPlayer.chooseWildColor();
+            }
+            return { action: 'play', cardId: cardToPlay.id, chosenColor };
+        }
+        // Must draw
+        return { action: 'draw' };
+    }
+    // Apply AI decision (pure function)
+    applyAIAction(action) {
+        if (action.action === 'play' && action.cardId) {
+            const currentPlayer = this.getCurrentPlayer();
+            // Check if this play will leave the AI with exactly one card (should call UNO)
+            const willHaveOneCard = currentPlayer.getHandSize() === 2;
+            return this.playCard(this.getCurrentPlayer().id, action.cardId, action.chosenColor, willHaveOneCard);
+        }
+        else if (action.action === 'draw') {
+            return this.drawCard(this.getCurrentPlayer().id) !== null;
+        }
+        return false;
+    }
+    getAIDelay() {
+        // Base delay with some randomness for realism
+        const baseDelays = {
+            easy: 1000,
+            normal: 1500,
+            hard: 2000,
+            expert: 2500,
+        };
+        const baseDelay = baseDelays[this.rules.aiDifficulty] || 1500;
+        const randomFactor = 0.5 + Math.random() * 1.0; // 0.5x to 1.5x base delay
+        return Math.floor(baseDelay * randomFactor);
+    }
+    executeAITurn(currentPlayer) {
+        this.debugLog('AI', `${currentPlayer.name} making AI decision...`);
+        // Log current hand and playable cards before decision
+        const topCard = this.getTopCard();
+        if (topCard) {
+            const playableCards = currentPlayer.getPlayableCards(topCard, this.wildColor || undefined);
+            this.debugLog('AI', `${currentPlayer.name} decision analysis:`, {
+                handSize: currentPlayer.getHandSize(),
+                handCards: currentPlayer.getHand().map(c => `${c.color} ${c.value}`),
+                topCard: `${topCard.color} ${topCard.value}`,
+                wildColor: this.wildColor,
+                playableCards: playableCards.map(c => `${c.color} ${c.value}`),
+                playableCount: playableCards.length
+            });
+        }
+        const decision = this.decideAITurn();
+        if (!decision) {
+            this.debugLog('AI', `${currentPlayer.name} could not decide on action - no playable cards and must draw`);
+            this.log("AI could not decide on action");
+            return;
+        }
+        this.debugLog('AI', `${currentPlayer.name} decided to ${decision.action}`, decision);
+        const success = this.applyAIAction(decision);
+        this.debugLog('AI', `${currentPlayer.name} action result: ${success}`);
+        this.log("AI action result:", success, "action:", decision.action);
+    }
+    // Enhanced AI card selection based on difficulty
+    chooseAICard(player, topCard) {
+        const playableCards = player.getPlayableCards(topCard, this.wildColor || undefined);
+        this.debugLog('AI', `${player.name} has ${playableCards.length} playable cards:`, playableCards.map(c => `${c.color} ${c.value}`));
+        if (playableCards.length === 0) {
+            this.debugLog('AI', `${player.name} has no playable cards`);
+            return null;
+        }
+        let selectedCard = null;
+        switch (this.rules.aiDifficulty) {
+            case 'easy':
+                selectedCard = this.easyAIStrategy(playableCards);
+                this.debugLog('AI', `${player.name} using easy strategy`);
+                break;
+            case 'normal':
+                selectedCard = this.normalAIStrategy(playableCards, topCard);
+                this.debugLog('AI', `${player.name} using normal strategy`);
+                break;
+            case 'hard':
+                selectedCard = this.hardAIStrategy(playableCards, topCard, player);
+                this.debugLog('AI', `${player.name} using hard strategy`);
+                break;
+            case 'expert':
+                selectedCard = this.expertAIStrategy(playableCards, topCard, player);
+                this.debugLog('AI', `${player.name} using expert strategy`);
+                break;
+            default:
+                selectedCard = this.normalAIStrategy(playableCards, topCard);
+                this.debugLog('AI', `${player.name} using default normal strategy`);
+        }
+        if (selectedCard) {
+            this.debugLog('AI', `${player.name} selected: ${selectedCard.color} ${selectedCard.value}`);
+        }
+        return selectedCard;
+    }
+    // Consolidated AI strategy methods with enhanced context awareness
+    easyAIStrategy(playableCards) {
+        // Random selection
+        return playableCards[Math.floor(Math.random() * playableCards.length)];
+    }
+    normalAIStrategy(playableCards, topCard) {
+        // Enhanced strategy with better prioritization
+        const normalCards = playableCards.filter((card) => !card.isActionCard() && !card.isWildCard());
+        const actionCards = playableCards.filter((card) => card.isActionCard() && !card.isWildCard());
+        const wildCards = playableCards.filter((card) => card.isWildCard());
+        // 1. Prefer normal cards (numbers) over action cards and wilds
+        if (normalCards.length > 0) {
+            // Prefer color matches over number matches
+            const colorMatches = normalCards.filter((card) => card.color === (this.wildColor || topCard.color));
+            if (colorMatches.length > 0) {
+                return colorMatches[Math.floor(Math.random() * colorMatches.length)];
+            }
+            return normalCards[Math.floor(Math.random() * normalCards.length)];
+        }
+        // 2. Prefer action cards over wilds (but be strategic about it)
+        if (actionCards.length > 0) {
+            // Prefer color matches for action cards
+            const colorMatches = actionCards.filter((card) => card.color === (this.wildColor || topCard.color));
+            if (colorMatches.length > 0) {
+                return colorMatches[Math.floor(Math.random() * colorMatches.length)];
+            }
+            return actionCards[Math.floor(Math.random() * actionCards.length)];
+        }
+        // 3. Wild cards as last resort - choose best color strategically
+        if (wildCards.length > 0) {
+            return wildCards[Math.floor(Math.random() * wildCards.length)];
+        }
+        return playableCards[Math.floor(Math.random() * playableCards.length)];
+    }
+    hardAIStrategy(playableCards, topCard, player) {
+        const nextPlayer = this.getNextPlayer();
+        // Check if next player is close to winning
+        const nextPlayerCardCount = nextPlayer.getHandSize();
+        const shouldBlock = nextPlayerCardCount <= 2;
+        // Prefer action cards if next player is close to winning
+        if (shouldBlock) {
+            const actionCards = playableCards.filter((card) => card.isActionCard() && !card.isWildCard());
+            if (actionCards.length > 0) {
+                return actionCards[Math.floor(Math.random() * actionCards.length)];
+            }
+        }
+        // Otherwise use normal strategy with some randomness
+        const randomFactor = Math.random();
+        if (randomFactor < 0.7) {
+            return this.normalAIStrategy(playableCards, topCard);
+        }
+        else {
+            return this.easyAIStrategy(playableCards);
+        }
+    }
+    expertAIStrategy(playableCards, topCard, player) {
+        const nextPlayer = this.getNextPlayer();
+        const nextPlayerCardCount = nextPlayer.getHandSize();
+        // Expert strategy: consider multiple factors
+        const shouldBlock = nextPlayerCardCount <= 2;
+        const shouldConserveActionCards = player.getHandSize() > 5;
+        const hasMultipleOptions = playableCards.length > 3;
+        // If next player is close to winning, prioritize blocking
+        if (shouldBlock) {
+            const actionCards = playableCards.filter((card) => card.isActionCard() && !card.isWildCard());
+            if (actionCards.length > 0) {
+                // Prefer Skip over Draw Two if we have both
+                const skipCards = actionCards.filter(card => card.value === "Skip");
+                if (skipCards.length > 0)
+                    return skipCards[0];
+                return actionCards[0];
+            }
+        }
+        // If we have many cards and many options, conserve action cards
+        if (shouldConserveActionCards && hasMultipleOptions) {
+            const nonActionCards = playableCards.filter((card) => !card.isActionCard());
+            if (nonActionCards.length > 0) {
+                // Prefer color matches to reduce hand variety
+                const colorMatches = nonActionCards.filter((card) => card.color === topCard.color);
+                if (colorMatches.length > 0)
+                    return colorMatches[0];
+                return nonActionCards[0];
+            }
+        }
+        // Default to hard strategy
+        return this.hardAIStrategy(playableCards, topCard, player);
+    }
+    getNextPlayer() {
+        const nextIndex = this.getNextPlayerIndex();
+        return this.players[nextIndex];
+    }
+    getNextPlayerIndex(fromIndex) {
+        const currentIndex = fromIndex ?? this.currentPlayerIndex;
+        const playerCount = this.players.length;
+        this.log("getNextPlayerIndex - from:", currentIndex, "direction:", this.direction, "playerCount:", playerCount);
+        let nextIndex;
+        if (this.direction === "clockwise") {
+            nextIndex = (currentIndex + 1) % playerCount;
+        }
+        else {
+            nextIndex = currentIndex === 0 ? playerCount - 1 : currentIndex - 1;
+        }
+        this.log("Calculated next index:", nextIndex);
+        return nextIndex;
+    }
+}
+exports.UnoGame = UnoGame;
