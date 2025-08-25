@@ -958,7 +958,7 @@ function UnoGameInner() {
     setColorConfirmation({
       color,
       playerName: "You",
-      duration: 3000
+      duration: 500
     })
 
     setFeedback({
@@ -1002,7 +1002,7 @@ function UnoGameInner() {
     setTimeout(() => {
       setFeedback(null)
       setColorConfirmation(null)
-    }, 3000)
+    }, 500)
   }
 
   const handleColorPickerClose = () => {
@@ -1160,13 +1160,13 @@ function UnoGameInner() {
               setColorConfirmation({
                 color: maxColor as 'red' | 'blue' | 'green' | 'yellow',
                 playerName: currentPlayer.name,
-                duration: 2000
+                duration: 500
               })
 
               // Clear AI color confirmation after delay
               setTimeout(() => {
                 setColorConfirmation(null)
-              }, 2000)
+              }, 500)
             }
           } else {
             // No playable cards - AI should draw
