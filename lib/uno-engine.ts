@@ -337,7 +337,7 @@ export class ExpertAIStrategy implements IAIStrategy {
     players.forEach((p) => {
       if (p.id !== currentPlayerId && p.handSize < lowestCardCount) {
         lowestCardCount = p.handSize
-        biggestThreat = p
+        biggestThreat = { id: p.id, handSize: p.handSize }
       }
     })
 
@@ -345,28 +345,29 @@ export class ExpertAIStrategy implements IAIStrategy {
 
     // Score based on how much this move disrupts the biggest threat
     let score = 0
+    const threat = biggestThreat as { id: string, handSize: number }
 
     if (card.value === 'Skip' || card.value === 'Draw Two') {
       // High score for blocking players close to winning
-      if (biggestThreat.handSize <= 2) {
+      if (threat.handSize <= 2) {
         score += ExpertAIStrategy.DEFENSIVE_SCORE_IMMINENT_THREAT
-      } else if (biggestThreat.handSize <= 4) {
+      } else if (threat.handSize <= 4) {
         score += ExpertAIStrategy.DEFENSIVE_SCORE_MEDIUM_THREAT
       } else {
         score += ExpertAIStrategy.DEFENSIVE_SCORE_LOW_THREAT
       }
     } else if (card.value === 'Reverse') {
       // Reverse is less effective but still valuable
-      if (biggestThreat.handSize <= 3) {
+      if (threat.handSize <= 3) {
         score += ExpertAIStrategy.DEFENSIVE_SCORE_REVERSE_HIGH
       } else {
         score += ExpertAIStrategy.DEFENSIVE_SCORE_REVERSE_LOW
       }
     } else if (card.value === 'Wild Draw Four') {
       // Wild Draw Four is very powerful for disruption
-      if (biggestThreat.handSize <= 2) {
+      if (threat.handSize <= 2) {
         score += ExpertAIStrategy.DEFENSIVE_SCORE_WILD_D4_IMMINENT
-      } else if (biggestThreat.handSize <= 4) {
+      } else if (threat.handSize <= 4) {
         score += ExpertAIStrategy.DEFENSIVE_SCORE_WILD_D4_MEDIUM
       } else {
         score += ExpertAIStrategy.DEFENSIVE_SCORE_WILD_D4_LOW
@@ -690,11 +691,22 @@ export class UnoPlayer {
   ) { }
 
   addCards(cards: UnoCard[]): void {
+    const wasCalledUno = this.hasCalledUno
+    const hadOneCard = this.hasOneCard()
+    const previousHandSize = this.hand.length
+
     this.hand.push(...cards)
-    // Reset UNO call if cards are added (penalty for not calling UNO)
-    if (this.hasOneCard() && !this.hasCalledUno) {
+
+    // CRITICAL FIX: Only reset UNO call if this is clearly a penalty situation
+    // Do NOT reset UNO call if:
+    // 1. Player legitimately called UNO and had one card
+    // 2. This is a forced draw (like Draw Two penalty) where UNO state should persist
+    if (hadOneCard && !wasCalledUno && this.hand.length > 1) {
+      // This was a penalty for not calling UNO
       this.resetUnoCall()
+      // Note: Debug logging for UNO reset is handled at the engine level where addCards is called
     }
+    // In all other cases, preserve the UNO call state
   }
 
   removeCard(cardId: string): UnoCard | null {
@@ -1041,17 +1053,38 @@ export class UnoGame {
   }
 
   private startUnoChallengeTimer(player: UnoPlayer): void {
+    // Don't start challenge timers for AI players
+    if (!player.isHuman) {
+      this.debugLog('UNO', `Skipping challenge timer for AI player ${player.name}`)
+      return
+    }
+
     // Clear any existing timer for this player
     this.clearUnoChallengeTimer(player.id)
 
-    // Start new timer
+    // Start new timer for human players only
     const timer = setTimeout(() => {
       if (player.hasOneCard() && !player.getHasCalledUno()) {
-        // Auto-penalty if UNO not called within time window
         this.log("UNO challenge timer expired - applying penalty to", player.name)
         const result = this.deck.drawCards(2)
+
+        // Debug logging for UNO penalty card additions
+        if (this.rules.debugMode) {
+          const wasCalledUno = player.getHasCalledUno()
+          const hadOneCard = player.hasOneCard()
+          const previousHandSize = player.getHandSize()
+          console.log(`[UNO PENALTY] ${player.name} cards being added:`, result.drawnCards.map(c => `${c.color} ${c.value}`))
+          console.log(`[UNO PENALTY] ${player.name} hand size: ${previousHandSize} -> ${previousHandSize + result.drawnCards.length}`)
+          console.log(`[UNO PENALTY] ${player.name} UNO state: wasCalledUno=${wasCalledUno}, hadOneCard=${hadOneCard}`)
+        }
+
         player.addCards(result.drawnCards)
         player.resetUnoCall()
+
+        // Debug logging for UNO call reset
+        if (this.rules.debugMode) {
+          console.log(`[UNO PENALTY] ${player.name} UNO call reset due to penalty`)
+        }
       }
       this.unoChallengeTimers.delete(player.id)
     }, this.unoChallengeWindow)
@@ -1230,20 +1263,30 @@ export class UnoGame {
    */
   private _handleUnoState(player: UnoPlayer, isUnoCall: boolean): void {
     if (player.hasOneCard()) {
-      // Check if the AI should be calling UNO on this turn.
-      const shouldAutoCallUno = !player.isHuman && isUnoCall;
-
-      if (shouldAutoCallUno || player.getHasCalledUno()) {
-        // If the AI should call UNO, update its state now.
-        if (shouldAutoCallUno) {
-          player.callUno(); // <-- This line is the fix.
+      // CRITICAL FIX: AI players must always call UNO automatically
+      if (!player.isHuman) {
+        if (!player.getHasCalledUno()) {
+          player.callUno() // This was the missing piece
         }
         this.lastPlayerWithOneCard = player
         this.clearUnoChallengeTimer(player.id)
         this.emitEvent('onUnoCalled', player)
+        this.debugLog('UNO', `${player.name} (AI) automatically called UNO`)
       } else {
-        // This path is now correctly reserved for human players who forget to call UNO.
-        this.startUnoChallengeTimer(player)
+        // Human players - existing logic
+        if (isUnoCall || player.getHasCalledUno()) {
+          if (isUnoCall && !player.getHasCalledUno()) {
+            player.callUno()
+          }
+          this.lastPlayerWithOneCard = player
+          this.clearUnoChallengeTimer(player.id)
+          this.emitEvent('onUnoCalled', player)
+          this.debugLog('UNO', `${player.name} (Human) called UNO`)
+        } else {
+          // Human forgot to call UNO - start penalty timer
+          this.startUnoChallengeTimer(player)
+          this.debugLog('UNO', `${player.name} (Human) forgot to call UNO - timer started`)
+        }
       }
     }
   }
@@ -1460,6 +1503,17 @@ export class UnoGame {
     }
     if (card) {
       this.debugLog('DRAW', `${player.name} successfully drew: ${card.color} ${card.value}`)
+
+      // Debug logging for card additions
+      if (this.rules.debugMode) {
+        const wasCalledUno = player.getHasCalledUno()
+        const hadOneCard = player.hasOneCard()
+        const previousHandSize = player.getHandSize()
+        console.log(`[PLAYER] ${player.name} cards being added:`, [card].map(c => `${c.color} ${c.value}`))
+        console.log(`[PLAYER] ${player.name} hand size: ${previousHandSize} -> ${previousHandSize + 1}`)
+        console.log(`[PLAYER] ${player.name} UNO state: wasCalledUno=${wasCalledUno}, hadOneCard=${hadOneCard}`)
+      }
+
       player.addCards([card])
 
       // Log updated hand after drawing
@@ -2576,31 +2630,22 @@ export class UnoGame {
   private executeAITurn(currentPlayer: UnoPlayer): void {
     this.debugLog('AI', `${currentPlayer.name} making AI decision...`)
 
-    // Log current hand and playable cards before decision
-    const topCard = this.getTopCard()
-    if (topCard) {
-      const playableCards = currentPlayer.getPlayableCards(topCard, this.wildColor || undefined)
-      this.debugLog('AI', `${currentPlayer.name} decision analysis:`, {
-        handSize: currentPlayer.getHandSize(),
-        handCards: currentPlayer.getHand().map(c => `${c.color} ${c.value}`),
-        topCard: `${topCard.color} ${topCard.value}`,
-        wildColor: this.wildColor,
-        playableCards: playableCards.map(c => `${c.color} ${c.value}`),
-        playableCount: playableCards.length
-      })
-    }
-
     const decision = this.decideAITurn()
     if (!decision) {
-      this.debugLog('AI', `${currentPlayer.name} could not decide on action - no playable cards and must draw`)
-      this.log("AI could not decide on action")
+      this.debugLog('AI', `${currentPlayer.name} could not decide on action`)
       return
     }
 
-    this.debugLog('AI', `${currentPlayer.name} decided to ${decision.action}`, decision)
-    const success = this.applyAIAction(decision)
-    this.debugLog('AI', `${currentPlayer.name} action result: ${success}`)
-    this.log("AI action result:", success, "action:", decision.action)
+    if (decision.action === 'play' && decision.cardId) {
+      // Check if AI will have one card after this play
+      const willHaveOneCard = currentPlayer.getHandSize() === 2
+
+      // CRITICAL FIX: Always call UNO for AI players when they'll have one card
+      const success = this.playCard(currentPlayer.id, decision.cardId, decision.chosenColor, willHaveOneCard)
+      this.debugLog('AI', `${currentPlayer.name} action result: ${success}`)
+    } else if (decision.action === 'draw') {
+      this.drawCard(currentPlayer.id)
+    }
   }
 
   // Enhanced AI card selection based on difficulty
@@ -2819,5 +2864,31 @@ export class UnoGame {
 
     this.log("Calculated next index:", nextIndex)
     return nextIndex
+  }
+
+  // Fix 6: Add method to check why AI can't finish
+  public debugAIPlayerState(playerId: string): any {
+    const player = this.players.find(p => p.id === playerId)
+    if (!player || player.isHuman) return null
+
+    const topCard = this.getTopCard()
+    const playableCards = topCard ? player.getPlayableCards(topCard, this.wildColor || undefined) : []
+
+    return {
+      playerName: player.name,
+      handSize: player.getHandSize(),
+      handCards: player.getHand().map(c => `${c.color} ${c.value}`),
+      hasCalledUno: player.getHasCalledUno(),
+      hasOneCard: player.hasOneCard(),
+      shouldBePenalized: player.shouldBePenalizedForUno(),
+      playableCards: playableCards.map(c => `${c.color} ${c.value}`),
+      topCard: topCard ? `${topCard.color} ${topCard.value}` : 'none',
+      wildColor: this.wildColor,
+      phase: this.phase,
+      isCurrentPlayer: this.getCurrentPlayer().id === playerId,
+      challengeTimerActive: this.unoChallengeTimers.has(playerId),
+      consecutiveSkips: this.consecutiveSkips,
+      drawPenalty: this.drawPenalty
+    }
   }
 }
