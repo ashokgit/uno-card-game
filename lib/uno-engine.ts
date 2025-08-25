@@ -656,15 +656,17 @@ export class UnoGame {
 
     const { player, card, isJumpIn } = validation
 
-    // Store the current active color before playing the card
-    // This is the color that was active BEFORE this card was played
-    this.previousActiveColor = this.wildColor || this.getTopCard()!.color
-
     // Remove card from player's hand and play it
     const playedCard = player!.removeCard(cardId)
     if (!playedCard) return false
 
     this.deck.playCard(playedCard)
+
+    // Store the current active color ONLY when playing a Wild Draw Four
+    // This ensures previousActiveColor is accurate for challenge validation
+    if (playedCard.value === "Wild Draw Four") {
+      this.previousActiveColor = this.wildColor || this.getTopCard()!.color
+    }
 
     // Clear wild color BEFORE applying effects to ensure previousActiveColor is accurate
     this.wildColor = null
@@ -1015,6 +1017,12 @@ export class UnoGame {
         const playedCard = player.removeCard(card.id)
         if (playedCard) {
           this.deck.playCard(playedCard)
+
+          // Store the current active color ONLY when playing a Wild Draw Four
+          // This ensures previousActiveColor is accurate for challenge validation
+          if (playedCard.value === "Wild Draw Four") {
+            this.previousActiveColor = this.wildColor || this.getTopCard()!.color
+          }
 
           // Emit card drawn and auto-played event
           this.emitEvent('onCardDrawn', player, card, true)
