@@ -90,7 +90,7 @@ function UnoGameInner() {
   const [playDelay, setPlayDelay] = useState(false)
   const [animatedCards, setAnimatedCards] = useState<AnimatedCard[]>([])
   const [animationPool, setAnimationPool] = useState<AnimatedCard[]>([])
-  const [nextAnimationId, setNextAnimationId] = useState(1)
+  const nextAnimationId = useRef(1)
   const [currentCard, setCurrentCard] = useState<GameCard | null>(null)
   const [direction, setDirection] = useState<GameDirection>("clockwise")
   const [currentPlayerId, setCurrentPlayerId] = useState<string>("")
@@ -221,7 +221,7 @@ function UnoGameInner() {
     setPlayDelay(false)
     setAnimatedCards([])
     setAnimationPool([])
-    setNextAnimationId(1)
+    nextAnimationId.current = 1
   }
 
   // Initialize game state when engine is ready
@@ -387,7 +387,7 @@ function UnoGameInner() {
       setAnimationPool(prev => prev.slice(1))
       return {
         ...pooled,
-        id: nextAnimationId,
+        id: nextAnimationId.current++,
         isAnimating: false,
         currentX: 0,
         currentY: 0,
@@ -397,7 +397,7 @@ function UnoGameInner() {
 
     // Create new animation object if pool is empty
     const newAnimation: AnimatedCard = {
-      id: nextAnimationId,
+      id: nextAnimationId.current++,
       card: { id: 0, color: "red", value: "1", isPlayable: false },
       startX: 0,
       startY: 0,
@@ -424,7 +424,6 @@ function UnoGameInner() {
       bounceCount: 0
     }
 
-    setNextAnimationId(prev => prev + 1)
     return newAnimation
   }
 
@@ -2409,7 +2408,7 @@ function UnoGameInner() {
                 <div className="flex gap-[-15px] transform-origin-center mb-2">
                   {Array.from({ length: Math.min(player.cardCount, 5) }, (_, i) => (
                     <div
-                      key={i}
+                      key={`${player.id}-card-${i}`}
                       className="transition-transform duration-300 hover:scale-110"
                       style={{
                         transform: `rotate(${(i - 2) * 3}deg)`,
