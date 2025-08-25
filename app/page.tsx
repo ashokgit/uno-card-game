@@ -103,6 +103,8 @@ function UnoGameInner() {
   const [pendingWildCard, setPendingWildCard] = useState<GameCard | null>(null)
   const [showMainMenu, setShowMainMenu] = useState(true)
   const [aiThinking, setAiThinking] = useState<{ playerName: string; startTime: number } | null>(null)
+  const [colorConfirmation, setColorConfirmation] = useState<{ color: string; playerName: string; duration: number } | null>(null)
+  const [isGamePaused, setIsGamePaused] = useState(false)
   const { gameSettings } = useSettings()
 
   // Background music state
@@ -154,6 +156,23 @@ function UnoGameInner() {
       backgroundMusicRef.current.volume = uiSettings.musicVolume
     }
   }, [uiSettings.musicVolume])
+
+  // Handle background music setting changes
+  useEffect(() => {
+    if (backgroundMusicRef.current) {
+      if (!uiSettings.backgroundMusic && isMusicPlaying) {
+        backgroundMusicRef.current.pause()
+        setIsMusicPlaying(false)
+      } else if (uiSettings.backgroundMusic && !isMusicPlaying) {
+        // Only auto-play if user has interacted with the page
+        backgroundMusicRef.current.play().then(() => {
+          setIsMusicPlaying(true)
+        }).catch((error) => {
+          console.log('Background music autoplay prevented:', error)
+        })
+      }
+    }
+  }, [uiSettings.backgroundMusic, isMusicPlaying])
 
   // Initialize game engine with event handlers
   const initializeGameEngine = (playerNames: string[], rules: UnoRules) => {
@@ -434,7 +453,7 @@ function UnoGameInner() {
   }
 
   const playCard = (cardToPlay: GameCard) => {
-    if (!gameEngine || !currentCard || !canPlayCard(cardToPlay, currentCard) || playDelay || !players[0]?.isActive)
+    if (!gameEngine || !currentCard || !canPlayCard(cardToPlay, currentCard) || playDelay || !players[0]?.isActive || isGamePaused)
       return
 
     setIsAnimating(true)
@@ -465,7 +484,8 @@ function UnoGameInner() {
     const playedCardElement = document.querySelector(`[data-card-id="${cardToPlay.id}"]`)
 
     // Define userThrowDuration at the function level so it's available everywhere
-    const userThrowDuration = Math.random() * 300 + 700 // 700ms to 1000ms for user throws - reduced from 1000-1400ms
+    const baseUserThrowDuration = Math.random() * 300 + 700 // 700ms to 1000ms for user throws - reduced from 1000-1400ms
+    const userThrowDuration = baseUserThrowDuration / uiSettings.animationSpeed
 
     if (userHandElement && centerElement) {
       const userHandRect = userHandElement.getBoundingClientRect()
@@ -597,6 +617,11 @@ function UnoGameInner() {
 
   // Add particle effect function
   const createParticleEffect = (card: GameCard, type: "wild" | "action" | "number") => {
+    // Check if visual effects are enabled
+    if (!uiSettings.visualEffects) {
+      return
+    }
+
     // Limit particle effects to prevent performance issues
     const existingParticles = document.querySelectorAll('.animate-particle-sparkle')
     if (existingParticles.length > 10) {
@@ -645,7 +670,7 @@ function UnoGameInner() {
   }
 
   const drawCard = () => {
-    if (!gameEngine || playDelay || !players[0]?.isActive) return
+    if (!gameEngine || playDelay || !players[0]?.isActive || isGamePaused) return
 
     // Check if player has playable cards
     const topCard = gameEngine.getTopCard()
@@ -665,7 +690,8 @@ function UnoGameInner() {
     const userHandElement = document.querySelector("[data-user-hand]")
 
     // Define userDrawDuration at the function level so it's available everywhere
-    const userDrawDuration = Math.random() * 200 + 600 // 600ms to 800ms for user draws - reduced from 1000-1300ms
+    const baseUserDrawDuration = Math.random() * 200 + 600 // 600ms to 800ms for user draws - reduced from 1000-1300ms
+    const userDrawDuration = baseUserDrawDuration / uiSettings.animationSpeed
 
     if (deckElement && userHandElement) {
       const deckRect = deckElement.getBoundingClientRect()
@@ -777,7 +803,7 @@ function UnoGameInner() {
   }
 
   const callUno = () => {
-    if (!gameEngine || players[0]?.cardCount !== 1) return
+    if (!gameEngine || players[0]?.cardCount !== 1 || isGamePaused) return
     playSound("uno")
     gameEngine.callUno("player_0")
 
@@ -814,6 +840,14 @@ function UnoGameInner() {
       yellow: "⭐ YELLOW LIGHTNING STRIKE! ⭐"
     }
 
+    // Pause the game and show prominent color confirmation overlay
+    setIsGamePaused(true)
+    setColorConfirmation({
+      color,
+      playerName: "You",
+      duration: 3000
+    })
+
     setFeedback({
       message: colorMessages[color],
       type: "perfect"
@@ -836,6 +870,13 @@ function UnoGameInner() {
           playSound("win")
         }
       }
+
+      // Auto UNO call if enabled and player has one card left
+      if (uiSettings.autoUnoCall && players[0]?.cardCount === 1) {
+        setTimeout(() => {
+          callUno()
+        }, 500) // Small delay to let the card play animation complete
+      }
     }
 
     // Close color picker and reset state
@@ -844,8 +885,12 @@ function UnoGameInner() {
     setIsAnimating(false)
     setPlayDelay(false)
 
-    // Clear feedback after a delay
-    setTimeout(() => setFeedback(null), 3000)
+    // Clear feedback and color confirmation after a delay, then resume game
+    setTimeout(() => {
+      setFeedback(null)
+      setColorConfirmation(null)
+      setIsGamePaused(false)
+    }, 3000)
   }
 
   const handleColorPickerClose = () => {
@@ -856,7 +901,7 @@ function UnoGameInner() {
   }
 
   const challengeUno = (targetPlayerId: string) => {
-    if (!gameEngine) return
+    if (!gameEngine || isGamePaused) return
     const success = gameEngine.challengeUno("player_0", targetPlayerId)
     if (success) {
       playSound("special")
@@ -923,7 +968,8 @@ function UnoGameInner() {
     setIsAITurnAnimating(true)
 
     // Reduced AI thinking time (100 to 500ms) - much faster response
-    const thinkingTime = Math.random() * 400 + 100
+    const baseThinkingTime = Math.random() * 400 + 100
+    const thinkingTime = baseThinkingTime / uiSettings.gameSpeed
     console.log(`AI ${currentPlayer.name} thinking for ${thinkingTime.toFixed(0)}ms`)
 
     // Execute AI turn after thinking time
@@ -971,6 +1017,20 @@ function UnoGameInner() {
                 colorCounts[a[0] as keyof typeof colorCounts] > colorCounts[b[0] as keyof typeof colorCounts] ? a : b
               )[0]
               chosenWildColor = maxColor
+
+              // Pause game and show AI color selection confirmation
+              setIsGamePaused(true)
+              setColorConfirmation({
+                color: maxColor as 'red' | 'blue' | 'green' | 'yellow',
+                playerName: currentPlayer.name,
+                duration: 2000
+              })
+
+              // Clear AI color confirmation after delay and resume game
+              setTimeout(() => {
+                setColorConfirmation(null)
+                setIsGamePaused(false)
+              }, 2000)
             }
           } else {
             // No playable cards - AI should draw
@@ -987,7 +1047,9 @@ function UnoGameInner() {
         const getRandomAnimationDuration = (baseDuration: number, variance: number = 0.3) => {
           const minDuration = baseDuration * (1 - variance)
           const maxDuration = baseDuration * (1 + variance)
-          return Math.random() * (maxDuration - minDuration) + minDuration
+          const randomDuration = Math.random() * (maxDuration - minDuration) + minDuration
+          // Apply animation speed setting
+          return randomDuration / uiSettings.animationSpeed
         }
 
         if (aiPlayerElement && centerElement) {
@@ -1258,6 +1320,11 @@ function UnoGameInner() {
   }
 
   const playSound = (type: "play" | "draw" | "win" | "uno" | "special" | "shuffle" | "card-flip" | "card-land") => {
+    // Check if sound effects are enabled
+    if (!uiSettings.soundEffects) {
+      return
+    }
+
     const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
 
     const createSound = (frequency: number, duration: number, type: OscillatorType = "sine", volume = 0.3) => {
@@ -1346,8 +1413,8 @@ function UnoGameInner() {
 
       playSound("shuffle")
 
-      // Start background music when game initializes
-      if (backgroundMusicRef.current && !isMusicPlaying) {
+      // Start background music when game initializes (only if enabled)
+      if (backgroundMusicRef.current && !isMusicPlaying && uiSettings.backgroundMusic) {
         backgroundMusicRef.current.play().then(() => {
           setIsMusicPlaying(true)
         }).catch((error) => {
@@ -1861,6 +1928,92 @@ function UnoGameInner() {
         </div>
       )}
 
+      {/* Color Selection Confirmation Overlay */}
+      {colorConfirmation && (
+        <div className="fixed inset-0 flex items-center justify-center z-[10000] pointer-events-none">
+          {/* Background blur */}
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm"></div>
+
+          {/* Color confirmation card */}
+          <div className={`
+            relative px-12 py-8 rounded-3xl shadow-2xl border-4 text-center font-bold text-4xl
+            transform transition-all duration-700 ease-out
+            animate-[zoomIn_0.5s_ease-out,fadeOut_0.5s_ease-in_2.5s_forwards]
+            ${colorConfirmation.color === "red" ? "bg-gradient-to-r from-red-500 to-red-700 text-white border-red-300 shadow-red-500/50" : ""}
+            ${colorConfirmation.color === "blue" ? "bg-gradient-to-r from-blue-500 to-blue-700 text-white border-blue-300 shadow-blue-500/50" : ""}
+            ${colorConfirmation.color === "green" ? "bg-gradient-to-r from-green-500 to-green-700 text-white border-green-300 shadow-green-500/50" : ""}
+            ${colorConfirmation.color === "yellow" ? "bg-gradient-to-r from-yellow-400 to-yellow-600 text-black border-yellow-300 shadow-yellow-500/50" : ""}
+          `}>
+            {/* Glowing border effect */}
+            <div className={`
+              absolute inset-0 rounded-3xl blur-xl animate-pulse
+              ${colorConfirmation.color === "red" ? "bg-red-400/50" : ""}
+              ${colorConfirmation.color === "blue" ? "bg-blue-400/50" : ""}
+              ${colorConfirmation.color === "green" ? "bg-green-400/50" : ""}
+              ${colorConfirmation.color === "yellow" ? "bg-yellow-400/50" : ""}
+            `}></div>
+
+            {/* Color icon */}
+            <div className="text-6xl mb-4 animate-bounce">
+              {colorConfirmation.color === "red" && "🔥"}
+              {colorConfirmation.color === "blue" && "💙"}
+              {colorConfirmation.color === "green" && "🌿"}
+              {colorConfirmation.color === "yellow" && "⭐"}
+            </div>
+
+            {/* Color name */}
+            <div className="text-5xl font-black tracking-wider drop-shadow-2xl mb-2">
+              {colorConfirmation.color.toUpperCase()}
+            </div>
+
+            {/* Player name */}
+            <div className="text-2xl font-semibold opacity-90">
+              {colorConfirmation.playerName} chose {colorConfirmation.color}!
+            </div>
+
+            {/* Animated particles */}
+            <div className="absolute inset-0 overflow-hidden rounded-3xl">
+              {[...Array(12)].map((_, i) => (
+                <div
+                  key={i}
+                  className={`
+                    absolute w-3 h-3 rounded-full animate-ping
+                    ${colorConfirmation.color === "red" ? "bg-red-300" : ""}
+                    ${colorConfirmation.color === "blue" ? "bg-blue-300" : ""}
+                    ${colorConfirmation.color === "green" ? "bg-green-300" : ""}
+                    ${colorConfirmation.color === "yellow" ? "bg-yellow-300" : ""}
+                  `}
+                  style={{
+                    left: `${Math.random() * 100}%`,
+                    top: `${Math.random() * 100}%`,
+                    animationDelay: `${Math.random() * 2}s`,
+                    animationDuration: `${1 + Math.random()}s`
+                  }}
+                />
+              ))}
+            </div>
+
+            {/* Sparkle effects */}
+            <div className="absolute inset-0 overflow-hidden rounded-3xl">
+              {[...Array(6)].map((_, i) => (
+                <div
+                  key={`sparkle-${i}`}
+                  className="absolute text-white animate-ping"
+                  style={{
+                    left: `${20 + i * 15}%`,
+                    top: `${30 + (i % 3) * 20}%`,
+                    animationDelay: `${i * 0.2}s`,
+                    fontSize: `${16 + Math.random() * 8}px`
+                  }}
+                >
+                  ✨
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Top-left controls */}
       <div className="absolute top-4 left-4 flex items-center gap-4 z-10">
         {/* Return to Main Menu */}
@@ -1874,25 +2027,26 @@ function UnoGameInner() {
           Menu
         </Button>
         {/* Background Music Controls */}
-        <div className={`bg-black/50 text-white p-2 rounded-lg border border-white/20 flex items-center gap-2 transition-all duration-300 ${isMusicPlaying ? 'border-yellow-400/50 shadow-lg shadow-yellow-400/20' : ''}`}>
+        <div className={`bg-black/50 text-white p-2 rounded-lg border border-white/20 flex items-center gap-2 transition-all duration-300 ${isMusicPlaying && uiSettings.backgroundMusic ? 'border-yellow-400/50 shadow-lg shadow-yellow-400/20' : ''}`}>
           <Button
             size="sm"
             variant="ghost"
-            className={`text-white hover:text-gray-300 p-1 transition-all duration-300 ${isMusicPlaying ? 'animate-pulse' : ''}`}
+            className={`text-white hover:text-gray-300 p-1 transition-all duration-300 ${isMusicPlaying && uiSettings.backgroundMusic ? 'animate-pulse' : ''}`}
             onClick={() => {
               if (backgroundMusicRef.current) {
                 if (isMusicPlaying) {
                   backgroundMusicRef.current.pause()
                   setIsMusicPlaying(false)
-                } else {
+                } else if (uiSettings.backgroundMusic) {
                   backgroundMusicRef.current.play()
                   setIsMusicPlaying(true)
                 }
               }
             }}
-            title={isMusicPlaying ? "Pause Music" : "Play Music"}
+            title={!uiSettings.backgroundMusic ? "Background Music Disabled" : isMusicPlaying ? "Pause Music" : "Play Music"}
+            disabled={!uiSettings.backgroundMusic}
           >
-            {isMusicPlaying ? "🔊" : "🔇"}
+            {!uiSettings.backgroundMusic ? "🔇" : isMusicPlaying ? "🔊" : "🔇"}
           </Button>
           <div className="flex flex-col items-center gap-1">
             <input
@@ -2365,9 +2519,9 @@ function UnoGameInner() {
               <div
                 key={card.id}
                 data-card-id={card.id}
-                className={`transition-all duration-300 transform hover:scale-110 hover:-translate-y-4 ${card.isPlayable && players[0]?.isActive && !playDelay
+                className={`transition-all duration-300 transform hover:scale-110 hover:-translate-y-4 ${card.isPlayable && players[0]?.isActive && !playDelay && uiSettings.showPlayableCards
                   ? "cursor-pointer hover:shadow-2xl hover:shadow-green-400/50 hover:rotate-0"
-                  : card.isPlayable
+                  : card.isPlayable && uiSettings.showPlayableCards
                     ? "cursor-pointer hover:scale-105"
                     : "opacity-60"
                   }`}
@@ -2377,8 +2531,8 @@ function UnoGameInner() {
                 }}
                 onClick={() => {
                   if (card.isPlayable && players[0]?.isActive && !playDelay) {
-                    // Show confirmation for action cards
-                    if (card.value === "Skip" || card.value === "Draw Two" || card.value === "Reverse" || card.color === "wild") {
+                    // Show confirmation for action cards if enabled
+                    if (uiSettings.confirmActionCards && (card.value === "Skip" || card.value === "Draw Two" || card.value === "Reverse" || card.color === "wild")) {
                       setShowActionConfirm({
                         card,
                         confirmed: () => {
@@ -2396,8 +2550,8 @@ function UnoGameInner() {
                   color={card.color}
                   value={card.value}
                   size="large"
-                  isPlayable={card.isPlayable && players[0]?.isActive && !playDelay}
-                  className={`uno-card-enhanced ${card.isPlayable && players[0]?.isActive && !playDelay ? "uno-card-playable" : ""}`}
+                  isPlayable={card.isPlayable && players[0]?.isActive && !playDelay && uiSettings.showPlayableCards}
+                  className={`uno-card-enhanced ${card.isPlayable && players[0]?.isActive && !playDelay && uiSettings.showPlayableCards ? "uno-card-playable" : ""}`}
                 />
               </div>
             ))}
