@@ -657,6 +657,7 @@ export class UnoGame {
     const { player, card, isJumpIn } = validation
 
     // Store the current active color before playing the card
+    // This is the color that was active BEFORE this card was played
     this.previousActiveColor = this.wildColor || this.getTopCard()!.color
 
     // Remove card from player's hand and play it
@@ -664,6 +665,8 @@ export class UnoGame {
     if (!playedCard) return false
 
     this.deck.playCard(playedCard)
+
+    // Clear wild color BEFORE applying effects to ensure previousActiveColor is accurate
     this.wildColor = null
 
     // Emit card played event
@@ -750,8 +753,10 @@ export class UnoGame {
 
     // Handle Wild Draw Four challenge rule (backup verification)
     if (card.value === "Wild Draw Four") {
+      // Check against the current active color (not previousActiveColor which is for challenges)
+      const currentActiveColor = this.wildColor || topCard.color
       const hasMatchingColor = player.getHand().some((c) =>
-        c.color === this.previousActiveColor && c.id !== cardId
+        c.color === currentActiveColor && c.id !== cardId
       )
       if (hasMatchingColor) {
         return { isValid: false, reason: "Wild Draw Four validation failed - player has matching color cards" }
@@ -1063,28 +1068,33 @@ export class UnoGame {
         this.emitEvent('onCardDrawn', player, card, false)
       }
     } else {
-      // Handle reshuffle edge case - no cards can be drawn
+      // CRITICAL FIX: Handle reshuffle edge case - no cards can be drawn
       this.debugLog('DRAW', `No cards can be drawn - deck empty and cannot reshuffle`)
-      this.log("No cards can be drawn - skipping turn")
+      this.log("No cards can be drawn - checking for deadlock immediately")
 
       // Track consecutive skips for deadlock detection
       this.consecutiveSkips++
       this.lastPlayerWhoSkipped = playerId
       this.debugLog('DEADLOCK', `Consecutive skips increased to ${this.consecutiveSkips}, last player who skipped: ${playerId}`)
 
-      // Check for deadlock before proceeding
+      // CRITICAL FIX: Check for deadlock immediately and resolve it before any turn progression
       this.debugLog('DEADLOCK', 'Checking for deadlock after failed draw...')
       if (this.isDeadlock()) {
         this.debugLog('DEADLOCK', `Deadlock detected, using resolution strategy: ${this.rules.deadlockResolution}`)
         this.logGameSituation() // Log detailed game situation when deadlock is detected
+
+        // CRITICAL FIX: Resolve deadlock immediately and return null to prevent any further processing
         if (this.rules.deadlockResolution === 'force_reshuffle') {
           this.resolveDeadlockWithReshuffle()
         } else {
           this.resolveDeadlock()
         }
+
+        // CRITICAL FIX: Return null immediately after deadlock resolution to prevent any loop
         return null
       }
 
+      // CRITICAL FIX: Only proceed to next turn if no deadlock was detected
       this.debugLog('DRAW', 'No deadlock detected, proceeding to next turn')
       this.nextTurn()
       return null
@@ -1531,15 +1541,19 @@ export class UnoGame {
   private isDeadlock(): boolean {
     this.debugLog('DEADLOCK', 'Checking for deadlock conditions...')
 
-    // Check if deck is empty and discard pile has only 1 card
+    // CRITICAL FIX: Enhanced deadlock detection for the specific AI loop scenario
+    // Check if deck is empty and discard pile has ≤1 card (the exact scenario from the bug report)
     if (this.deck.getRemainingCount() === 0 && this.deck.getDiscardPile().length <= 1) {
       this.debugLog('DEADLOCK', 'Empty deck detected, checking if any player can play top card')
 
       // Check if any player can play the top card
       const topCard = this.getTopCard()
       if (!topCard) {
-        this.debugLog('DEADLOCK', 'No top card found, no deadlock')
-        return false
+        // CRITICAL FIX: If there's no top card and deck is empty, this is a deadlock
+        // This handles the case where both deck and discard pile are empty
+        this.debugLog('DEADLOCK', 'DEADLOCK DETECTED: No top card available, deck empty, discard pile empty')
+        this.log("DEADLOCK DETECTED: No top card available, deck empty, discard pile empty")
+        return true
       }
 
       const playerPlayability = this.players.map(player => {
@@ -1556,7 +1570,8 @@ export class UnoGame {
 
       const canAnyPlayerPlay = playerPlayability.some(p => p.canPlay)
 
-      // If no player can play and deck is empty, we have a deadlock
+      // CRITICAL FIX: If no player can play and deck is empty, we have a deadlock
+      // This is the exact scenario described in the bug report
       if (!canAnyPlayerPlay) {
         this.debugLog('DEADLOCK', 'DEADLOCK DETECTED: No players can play, deck empty, discard pile has ≤1 card')
         this.log("DEADLOCK DETECTED: No players can play, deck empty, discard pile has ≤1 card")
@@ -1566,6 +1581,7 @@ export class UnoGame {
       }
     }
 
+    // CRITICAL FIX: Enhanced consecutive skips detection
     // Check for consecutive skips equal to number of players (full cycle with no progress)
     if (this.consecutiveSkips >= this.players.length) {
       this.debugLog('DEADLOCK', `DEADLOCK DETECTED: Full cycle completed with no cards played (${this.consecutiveSkips} skips >= ${this.players.length} players)`)
@@ -1573,11 +1589,23 @@ export class UnoGame {
       return true
     }
 
-    // Check for turn timeout (safety mechanism)
-    if (this.turnCount > 200) {
-      this.debugLog('DEADLOCK', `DEADLOCK DETECTED: Turn count exceeded 200 (current: ${this.turnCount})`)
-      this.log("DEADLOCK DETECTED: Turn count exceeded 200")
+    // CRITICAL FIX: Enhanced timeout detection for AI loop prevention
+    // Check for turn timeout (safety mechanism) - reduced from 200 to 100 for faster detection
+    if (this.turnCount > 100) {
+      this.debugLog('DEADLOCK', `DEADLOCK DETECTED: Turn count exceeded 100 (current: ${this.turnCount})`)
+      this.log("DEADLOCK DETECTED: Turn count exceeded 100")
       return true
+    }
+
+    // CRITICAL FIX: Additional check for rapid consecutive failed draws
+    // If the same player has been the last to skip multiple times in a row, it might indicate a loop
+    if (this.consecutiveSkips >= 3 && this.lastPlayerWhoSkipped) {
+      const currentPlayer = this.getCurrentPlayer()
+      if (currentPlayer.id === this.lastPlayerWhoSkipped) {
+        this.debugLog('DEADLOCK', `DEADLOCK DETECTED: Same player (${currentPlayer.name}) has been skipping repeatedly`)
+        this.log("DEADLOCK DETECTED: Same player has been skipping repeatedly")
+        return true
+      }
     }
 
     this.debugLog('DEADLOCK', 'No deadlock conditions detected')
