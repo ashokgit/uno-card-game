@@ -163,8 +163,12 @@ export class UnoDeck {
     if (this.cards.length === 0) {
       if (this.debugMode) {
         console.log(`[DECK] Deck empty, attempting to reshuffle discard pile`)
+        console.log(`[DECK] Current state - deck: ${this.cards.length}, discard: ${this.discardPile.length}`)
       }
       this.reshuffleDiscardPile()
+      if (this.debugMode) {
+        console.log(`[DECK] After reshuffle attempt - deck: ${this.cards.length}, discard: ${this.discardPile.length}`)
+      }
     }
 
     const card = this.cards.pop()
@@ -192,19 +196,18 @@ export class UnoDeck {
       console.log(`[DECK] Attempting reshuffle - deck: ${this.cards.length} cards, discard: ${this.discardPile.length} cards`)
     }
 
-    if (this.discardPile.length <= 1) {
-      // Special case: if deck is empty and discard pile has only 1 card,
-      // we need to handle this to prevent deadlock
-      if (this.cards.length === 0 && this.discardPile.length === 1) {
-        if (this.debugMode) {
-          console.log(`[DECK] Cannot reshuffle - deck empty and only 1 card in discard pile`)
-        }
-        // In this case, we can't reshuffle, but we should signal this to the game
-        // The game will handle the deadlock detection
-        return
-      }
+    // FIX: Allow reshuffle even with 1 card if deck is empty (prevents deadlock)
+    if (this.discardPile.length === 0) {
       if (this.debugMode) {
-        console.log(`[DECK] Cannot reshuffle - discard pile has only ${this.discardPile.length} cards`)
+        console.log(`[DECK] Cannot reshuffle - discard pile is empty`)
+      }
+      return
+    }
+
+    if (this.discardPile.length === 1 && this.cards.length > 0) {
+      // Only prevent reshuffle if we have cards in deck and only 1 in discard
+      if (this.debugMode) {
+        console.log(`[DECK] Cannot reshuffle - discard pile has only 1 card and deck has cards`)
       }
       return
     }
@@ -998,6 +1001,9 @@ export class UnoGame {
     }
 
     const card = this.deck.drawCard()
+    if (this.rules.debugMode) {
+      console.log(`[DECK] Draw result: ${card ? `${card.color} ${card.value}` : 'null'}`)
+    }
     if (card) {
       this.debugLog('DRAW', `${player.name} successfully drew: ${card.color} ${card.value}`)
       player.addCards([card])
@@ -1259,6 +1265,9 @@ export class UnoGame {
 
     if (!player || !topCard) return false
 
+    // Can't jump in on Wild cards - their state is unresolved until a color is chosen
+    if (topCard.color === 'wild') return false
+
     // Can't jump in on your own turn
     if (this.getCurrentPlayer().id === playerId) return false
 
@@ -1277,6 +1286,9 @@ export class UnoGame {
     const topCard = this.getTopCard()
 
     if (!player || !topCard || this.getCurrentPlayer().id === playerId) return []
+
+    // Can't jump in on Wild cards - their state is unresolved until a color is chosen
+    if (topCard.color === 'wild') return []
 
     return player.getHand().filter(card =>
       card.color === topCard.color && card.value === topCard.value

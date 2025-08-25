@@ -27,6 +27,7 @@ import {
 import { UnoGame as GameEngine, type UnoCard as EngineCard, type GameDirection, type UnoColor, type UnoRules } from "@/lib/uno-engine"
 import { GameLog } from "@/components/game-log"
 import { MainMenu } from "@/components/main-menu"
+import { ColorPicker } from "@/components/color-picker"
 import { SettingsProvider, useSettings } from "@/contexts/settings-context"
 
 interface Player {
@@ -98,6 +99,8 @@ function UnoGameInner() {
   const [isDiscardPileVisible, setIsDiscardPileVisible] = useState(false)
   const [showActionConfirm, setShowActionConfirm] = useState<{ card: GameCard; confirmed: () => void } | null>(null)
   const [isDeveloperMode, setIsDeveloperMode] = useState(false)
+  const [showColorPicker, setShowColorPicker] = useState(false)
+  const [pendingWildCard, setPendingWildCard] = useState<GameCard | null>(null)
   const [showMainMenu, setShowMainMenu] = useState(true)
   const [aiThinking, setAiThinking] = useState<{ playerName: string; startTime: number } | null>(null)
   const [currentRules, setCurrentRules] = useState<UnoRules>({
@@ -498,13 +501,7 @@ function UnoGameInner() {
         // Still use the randomized timing even when skipping animation
         const userGameUpdateDelay = userThrowDuration + Math.random() * 200 + 200
         setTimeout(() => {
-          let chosenColor: "red" | "blue" | "green" | "yellow" | undefined
-          if (cardToPlay.color === "wild") {
-            const colors: ("red" | "blue" | "green" | "yellow")[] = ["red", "blue", "green", "yellow"]
-            chosenColor = colors[Math.floor(Math.random() * colors.length)]
-          }
-
-          const success = gameEngine.playCard("player_0", cardToPlay.id.toString(), chosenColor)
+          const success = gameEngine.playCard("player_0", cardToPlay.id.toString())
           console.log("[v0] User card play result:", success, "New current player:", gameEngine.getCurrentPlayer().name)
 
           if (success) {
@@ -564,22 +561,24 @@ function UnoGameInner() {
       // Cards will be removed automatically when animation completes
     }
 
+    // Handle Wild card color selection
+    if (cardToPlay.color === "wild") {
+      setPendingWildCard(cardToPlay)
+      setShowColorPicker(true)
+      setIsAnimating(false)
+      setPlayDelay(false)
+      return
+    }
+
     // Delay game state update until animation completes with randomized timing
     const userGameUpdateDelay = userThrowDuration + Math.random() * 200 + 200 // Add 200-400ms buffer
     setTimeout(() => {
-      let chosenColor: "red" | "blue" | "green" | "yellow" | undefined
-      if (cardToPlay.color === "wild") {
-        const colors: ("red" | "blue" | "green" | "yellow")[] = ["red", "blue", "green", "yellow"]
-        chosenColor = colors[Math.floor(Math.random() * colors.length)]
-      }
-
       console.log("[DEBUG] User card play attempt:")
       console.log("  - Card:", cardToPlay.color, cardToPlay.value)
       console.log("  - Top card:", currentCard ? `${currentCard.color} ${currentCard.value}` : 'None')
       console.log("  - Wild color:", gameEngine.getWildColor())
-      console.log("  - Chosen color:", chosenColor)
 
-      const success = gameEngine.playCard("player_0", cardToPlay.id.toString(), chosenColor)
+      const success = gameEngine.playCard("player_0", cardToPlay.id.toString())
       console.log("[v0] User card play result:", success, "New current player:", gameEngine.getCurrentPlayer().name)
 
       if (!success) {
@@ -809,6 +808,65 @@ function UnoGameInner() {
       type: "perfect"
     })
     setTimeout(() => setFeedback(null), 5000)
+  }
+
+  const handleColorSelect = (color: 'red' | 'blue' | 'green' | 'yellow') => {
+    if (!gameEngine || !pendingWildCard) return
+
+    console.log("[DEBUG] Color selected:", color)
+    console.log("  - Pending card:", pendingWildCard.color, pendingWildCard.value)
+
+    // Play color selection sound
+    playSound("special")
+
+    // Add color-specific feedback
+    const colorEmojis = { red: '🔥', blue: '💙', green: '🌿', yellow: '⭐' }
+    const colorMessages = {
+      red: "🔥 RED POWER ACTIVATED! 🔥",
+      blue: "💙 BLUE FORCE ENGAGED! 💙",
+      green: "🌿 GREEN ENERGY FLOWING! 🌿",
+      yellow: "⭐ YELLOW LIGHTNING STRIKE! ⭐"
+    }
+
+    setFeedback({
+      message: colorMessages[color],
+      type: "perfect"
+    })
+
+    // Play the Wild card with the chosen color
+    const success = gameEngine.playCard("player_0", pendingWildCard.id.toString(), color)
+    console.log("[v0] Wild card play result:", success, "New current player:", gameEngine.getCurrentPlayer().name)
+
+    if (success) {
+      const gameData = convertToUIFormat()
+      setPlayers(gameData.players)
+      setCurrentCard(gameData.currentCard)
+      setDirection(gameData.direction)
+      setCurrentPlayerId(gameEngine.getCurrentPlayer().id)
+
+      if (gameEngine.isGameOver()) {
+        const winner = gameEngine.getRoundWinner()
+        if (winner) {
+          playSound("win")
+        }
+      }
+    }
+
+    // Close color picker and reset state
+    setShowColorPicker(false)
+    setPendingWildCard(null)
+    setIsAnimating(false)
+    setPlayDelay(false)
+
+    // Clear feedback after a delay
+    setTimeout(() => setFeedback(null), 3000)
+  }
+
+  const handleColorPickerClose = () => {
+    setShowColorPicker(false)
+    setPendingWildCard(null)
+    setIsAnimating(false)
+    setPlayDelay(false)
   }
 
   const challengeUno = (targetPlayerId: string) => {
@@ -2681,6 +2739,13 @@ function UnoGameInner() {
           </Button>
         </div>
       )}
+
+      {/* Color Picker for Wild Cards */}
+      <ColorPicker
+        isVisible={showColorPicker}
+        onColorSelect={handleColorSelect}
+        onClose={handleColorPickerClose}
+      />
     </div>
   )
 }
