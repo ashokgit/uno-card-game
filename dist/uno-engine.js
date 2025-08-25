@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.UnoGame = exports.UnoPlayer = exports.UnoDeck = exports.UnoCard = exports.DEFAULT_RULES = void 0;
+exports.UnoGame = exports.UnoPlayer = exports.UnoDeck = exports.UnoCard = exports.ExpertAIStrategy = exports.GameStateTracker = exports.DEFAULT_RULES = void 0;
 exports.DEFAULT_RULES = {
     stackDrawTwo: false, // Official rules: no stacking
     stackDrawFour: false, // Official rules: no stacking
@@ -15,6 +15,334 @@ exports.DEFAULT_RULES = {
     showDiscardPile: false, // Official: only top card is relevant, but can enable for full visibility
     deadlockResolution: 'end_round', // Default: end round when deadlock detected
 };
+// Game State Tracker for Advanced AI
+class GameStateTracker {
+    constructor() {
+        this.playedCards = new Map(); // card key -> count
+        this.opponentColorProfiles = new Map(); // playerId -> color confidence
+        this.opponentDrawPatterns = new Map();
+        this.lastPlayedCards = [];
+        this.MAX_HISTORY = 50;
+        this.initializeCardTracking();
+    }
+    initializeCardTracking() {
+        // Initialize tracking for all possible cards
+        const colors = ['red', 'blue', 'green', 'yellow'];
+        const values = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 'Skip', 'Reverse', 'Draw Two'];
+        // Regular cards
+        colors.forEach(color => {
+            values.forEach(value => {
+                this.playedCards.set(`${color}-${value}`, 0);
+            });
+        });
+        // Wild cards
+        this.playedCards.set('wild-Wild', 0);
+        this.playedCards.set('wild-Wild Draw Four', 0);
+    }
+    onCardPlayed(card, playerId) {
+        const cardKey = `${card.color}-${card.value}`;
+        this.playedCards.set(cardKey, (this.playedCards.get(cardKey) || 0) + 1);
+        // Track recent plays for pattern analysis
+        this.lastPlayedCards.push(card);
+        if (this.lastPlayedCards.length > this.MAX_HISTORY) {
+            this.lastPlayedCards.shift();
+        }
+        // Update opponent color profiles
+        this.updateOpponentColorProfile(card, playerId);
+    }
+    onCardDrawn(playerId, card) {
+        // Track draw patterns
+        const pattern = this.opponentDrawPatterns.get(playerId) || { draws: 0, skips: 0 };
+        pattern.draws++;
+        this.opponentDrawPatterns.set(playerId, pattern);
+    }
+    onPlayerSkipped(playerId) {
+        // Track when players skip instead of playing
+        const pattern = this.opponentDrawPatterns.get(playerId) || { draws: 0, skips: 0 };
+        pattern.skips++;
+        this.opponentDrawPatterns.set(playerId, pattern);
+    }
+    updateOpponentColorProfile(card, playerId) {
+        if (card.color === 'wild')
+            return; // Wild cards don't indicate color preference
+        let profile = this.opponentColorProfiles.get(playerId);
+        if (!profile) {
+            profile = new Map();
+            this.opponentColorProfiles.set(playerId, profile);
+        }
+        profile.set(card.color, (profile.get(card.color) || 0) + 1);
+    }
+    getProbabilityOfCard(color, value) {
+        const cardKey = `${color}-${value}`;
+        const playedCount = this.playedCards.get(cardKey) || 0;
+        // Calculate probability based on standard UNO deck composition
+        let totalInDeck = 0;
+        if (color === 'wild') {
+            totalInDeck = value === 'Wild' ? 4 : 4; // 4 Wild, 4 Wild Draw Four
+        }
+        else {
+            if (value === 0)
+                totalInDeck = 1;
+            else if (typeof value === 'number')
+                totalInDeck = 2;
+            else
+                totalInDeck = 2; // Skip, Reverse, Draw Two
+        }
+        const remaining = Math.max(0, totalInDeck - playedCount);
+        return remaining / totalInDeck;
+    }
+    getOpponentColorProfile(playerId) {
+        return this.opponentColorProfiles.get(playerId) || new Map();
+    }
+    getOpponentDrawPattern(playerId) {
+        return this.opponentDrawPatterns.get(playerId) || { draws: 0, skips: 0 };
+    }
+    getLeastLikelyColorForOpponent(playerId) {
+        const profile = this.getOpponentColorProfile(playerId);
+        const colors = ['red', 'blue', 'green', 'yellow'];
+        let leastLikely = colors[0];
+        let lowestCount = profile.get(colors[0]) || 0;
+        colors.forEach(color => {
+            const count = profile.get(color) || 0;
+            if (count < lowestCount) {
+                lowestCount = count;
+                leastLikely = color;
+            }
+        });
+        return leastLikely;
+    }
+    getMostLikelyColorForOpponent(playerId) {
+        const profile = this.getOpponentColorProfile(playerId);
+        const colors = ['red', 'blue', 'green', 'yellow'];
+        let mostLikely = colors[0];
+        let highestCount = profile.get(colors[0]) || 0;
+        colors.forEach(color => {
+            const count = profile.get(color) || 0;
+            if (count > highestCount) {
+                highestCount = count;
+                mostLikely = color;
+            }
+        });
+        return mostLikely;
+    }
+    reset() {
+        this.playedCards.clear();
+        this.opponentColorProfiles.clear();
+        this.opponentDrawPatterns.clear();
+        this.lastPlayedCards = [];
+        this.initializeCardTracking();
+    }
+}
+exports.GameStateTracker = GameStateTracker;
+// Expert AI Strategy Implementation
+class ExpertAIStrategy {
+    constructor(stateTracker) {
+        this.stateTracker = stateTracker;
+    }
+    chooseCard(playableCards, gameState, player) {
+        if (playableCards.length === 0)
+            return null;
+        // Score each playable card
+        const scoredMoves = playableCards.map(card => this.scoreMove(card, gameState, player));
+        // Sort by total score (highest first)
+        scoredMoves.sort((a, b) => b.totalScore - a.totalScore);
+        // Return the highest scoring card
+        return scoredMoves[0].card;
+    }
+    chooseWildColor(hand, gameState, player) {
+        const colors = ['red', 'blue', 'green', 'yellow'];
+        const colorScores = new Map();
+        colors.forEach(color => {
+            const selfInterestScore = this.calculateSelfInterestScore(color, hand);
+            const disruptionScore = this.calculateDisruptionScore(color, gameState, player);
+            // Combine scores with heavy weight on disruption for expert AI
+            const totalScore = selfInterestScore * ExpertAIStrategy.WILD_COLOR_SELF_INTEREST_WEIGHT +
+                disruptionScore * ExpertAIStrategy.WILD_COLOR_DISRUPTION_WEIGHT;
+            colorScores.set(color, totalScore);
+        });
+        // Find the color with the highest score
+        let bestColor = colors[0];
+        let bestScore = colorScores.get(colors[0]) || 0;
+        colors.forEach(color => {
+            const score = colorScores.get(color) || 0;
+            if (score > bestScore) {
+                bestScore = score;
+                bestColor = color;
+            }
+        });
+        return bestColor;
+    }
+    scoreMove(card, gameState, player) {
+        const defensiveScore = this.calculateDefensiveScore(card, gameState, player);
+        const offensiveScore = this.calculateOffensiveScore(card, gameState, player);
+        const handValueScore = this.calculateHandValueScore(card, player);
+        const resourceConservationScore = this.calculateResourceConservationScore(card, gameState, player);
+        const totalScore = defensiveScore + offensiveScore + handValueScore + resourceConservationScore;
+        return {
+            card,
+            defensiveScore,
+            offensiveScore,
+            handValueScore,
+            resourceConservationScore,
+            totalScore
+        };
+    }
+    calculateDefensiveScore(card, gameState, player) {
+        if (!card.isActionCard())
+            return 0;
+        const players = gameState.players;
+        const currentPlayerId = gameState.currentPlayerId;
+        // Find the biggest threat (player with fewest cards)
+        let biggestThreat = null;
+        let lowestCardCount = Infinity;
+        players.forEach((p) => {
+            if (p.id !== currentPlayerId && p.handSize < lowestCardCount) {
+                lowestCardCount = p.handSize;
+                biggestThreat = { id: p.id, handSize: p.handSize };
+            }
+        });
+        if (!biggestThreat)
+            return 0;
+        // Score based on how much this move disrupts the biggest threat
+        let score = 0;
+        const threat = biggestThreat;
+        if (card.value === 'Skip' || card.value === 'Draw Two') {
+            // High score for blocking players close to winning
+            if (threat.handSize <= 2) {
+                score += ExpertAIStrategy.DEFENSIVE_SCORE_IMMINENT_THREAT;
+            }
+            else if (threat.handSize <= 4) {
+                score += ExpertAIStrategy.DEFENSIVE_SCORE_MEDIUM_THREAT;
+            }
+            else {
+                score += ExpertAIStrategy.DEFENSIVE_SCORE_LOW_THREAT;
+            }
+        }
+        else if (card.value === 'Reverse') {
+            // Reverse is less effective but still valuable
+            if (threat.handSize <= 3) {
+                score += ExpertAIStrategy.DEFENSIVE_SCORE_REVERSE_HIGH;
+            }
+            else {
+                score += ExpertAIStrategy.DEFENSIVE_SCORE_REVERSE_LOW;
+            }
+        }
+        else if (card.value === 'Wild Draw Four') {
+            // Wild Draw Four is very powerful for disruption
+            if (threat.handSize <= 2) {
+                score += ExpertAIStrategy.DEFENSIVE_SCORE_WILD_D4_IMMINENT;
+            }
+            else if (threat.handSize <= 4) {
+                score += ExpertAIStrategy.DEFENSIVE_SCORE_WILD_D4_MEDIUM;
+            }
+            else {
+                score += ExpertAIStrategy.DEFENSIVE_SCORE_WILD_D4_LOW;
+            }
+        }
+        return score;
+    }
+    calculateOffensiveScore(card, gameState, player) {
+        let score = 0;
+        const hand = player.getHand();
+        // Prefer playing cards that match colors we have many of
+        if (card.color !== 'wild') {
+            const colorCount = hand.filter(c => c.color === card.color).length;
+            score += colorCount * ExpertAIStrategy.OFFENSIVE_COLOR_MULTIPLIER;
+        }
+        // Prefer playing high-point cards to reduce hand value
+        score += card.points * ExpertAIStrategy.OFFENSIVE_POINTS_MULTIPLIER;
+        // Prefer playing action cards that give us control
+        if (card.isActionCard()) {
+            score += ExpertAIStrategy.OFFENSIVE_ACTION_BONUS;
+        }
+        return score;
+    }
+    calculateHandValueScore(card, player) {
+        // Positive score for reducing hand value
+        return card.points * ExpertAIStrategy.HAND_VALUE_MULTIPLIER;
+    }
+    calculateResourceConservationScore(card, gameState, player) {
+        // Negative score for using valuable cards when not necessary
+        let score = 0;
+        if (card.value === 'Wild Draw Four') {
+            // Very high negative score - save for critical moments
+            score += ExpertAIStrategy.RESOURCE_CONSERVATION_PENALTY_WILD_D4;
+            // Reduce penalty if we're in a critical situation
+            const players = gameState.players;
+            const hasImmediateThreat = players.some((p) => p.id !== player.id && p.handSize <= 2);
+            if (hasImmediateThreat) {
+                score += ExpertAIStrategy.RESOURCE_CONSERVATION_THREAT_REDUCTION; // Still negative but less so
+            }
+        }
+        else if (card.value === 'Wild') {
+            // Moderate negative score
+            score += ExpertAIStrategy.RESOURCE_CONSERVATION_PENALTY_WILD;
+        }
+        else if (card.isActionCard()) {
+            // Small negative score for action cards
+            score += ExpertAIStrategy.RESOURCE_CONSERVATION_PENALTY_ACTION;
+        }
+        return score;
+    }
+    calculateSelfInterestScore(color, hand) {
+        // Count how many cards we have of this color
+        const colorCount = hand.filter(card => card.color === color).length;
+        // Also consider action cards of this color
+        const actionCardCount = hand.filter(card => card.color === color && card.isActionCard()).length;
+        return colorCount * ExpertAIStrategy.SELF_INTEREST_COLOR_MULTIPLIER +
+            actionCardCount * ExpertAIStrategy.SELF_INTEREST_ACTION_MULTIPLIER;
+    }
+    calculateDisruptionScore(color, gameState, player) {
+        const players = gameState.players;
+        let totalDisruptionScore = 0;
+        players.forEach((p) => {
+            if (p.id === player.id)
+                return; // Skip self
+            // Get the least likely color for this opponent
+            const leastLikelyColor = this.stateTracker.getLeastLikelyColorForOpponent(p.id);
+            if (color === leastLikelyColor) {
+                // High score for choosing colors opponents are unlikely to have
+                totalDisruptionScore += ExpertAIStrategy.DISRUPTION_BASE_SCORE;
+                // Bonus if this opponent is close to winning
+                if (p.handSize <= 3) {
+                    totalDisruptionScore += ExpertAIStrategy.DISRUPTION_THREAT_BONUS;
+                }
+            }
+            else {
+                // Lower score for colors they might have
+                const profile = this.stateTracker.getOpponentColorProfile(p.id);
+                const colorCount = profile.get(color) || 0;
+                totalDisruptionScore += Math.max(0, 50 - colorCount * ExpertAIStrategy.DISRUPTION_COLOR_PENALTY);
+            }
+        });
+        return totalDisruptionScore;
+    }
+}
+exports.ExpertAIStrategy = ExpertAIStrategy;
+// Scoring constants for AI behavior tuning
+ExpertAIStrategy.DEFENSIVE_SCORE_IMMINENT_THREAT = 100;
+ExpertAIStrategy.DEFENSIVE_SCORE_MEDIUM_THREAT = 50;
+ExpertAIStrategy.DEFENSIVE_SCORE_LOW_THREAT = 20;
+ExpertAIStrategy.DEFENSIVE_SCORE_REVERSE_HIGH = 30;
+ExpertAIStrategy.DEFENSIVE_SCORE_REVERSE_LOW = 10;
+ExpertAIStrategy.DEFENSIVE_SCORE_WILD_D4_IMMINENT = 150;
+ExpertAIStrategy.DEFENSIVE_SCORE_WILD_D4_MEDIUM = 80;
+ExpertAIStrategy.DEFENSIVE_SCORE_WILD_D4_LOW = 40;
+ExpertAIStrategy.OFFENSIVE_COLOR_MULTIPLIER = 5;
+ExpertAIStrategy.OFFENSIVE_POINTS_MULTIPLIER = 2;
+ExpertAIStrategy.OFFENSIVE_ACTION_BONUS = 15;
+ExpertAIStrategy.HAND_VALUE_MULTIPLIER = 3;
+ExpertAIStrategy.RESOURCE_CONSERVATION_PENALTY_WILD_D4 = -200;
+ExpertAIStrategy.RESOURCE_CONSERVATION_PENALTY_WILD = -50;
+ExpertAIStrategy.RESOURCE_CONSERVATION_PENALTY_ACTION = -10;
+ExpertAIStrategy.RESOURCE_CONSERVATION_THREAT_REDUCTION = 150;
+ExpertAIStrategy.SELF_INTEREST_COLOR_MULTIPLIER = 5;
+ExpertAIStrategy.SELF_INTEREST_ACTION_MULTIPLIER = 10;
+ExpertAIStrategy.DISRUPTION_BASE_SCORE = 100;
+ExpertAIStrategy.DISRUPTION_THREAT_BONUS = 50;
+ExpertAIStrategy.DISRUPTION_COLOR_PENALTY = 10;
+ExpertAIStrategy.WILD_COLOR_DISRUPTION_WEIGHT = 0.7;
+ExpertAIStrategy.WILD_COLOR_SELF_INTEREST_WEIGHT = 0.3;
 class UnoCard {
     constructor(id, color, value, points = 0) {
         this.id = id;
@@ -140,6 +468,7 @@ class UnoDeck {
         return { drawnCards, isExhausted };
     }
     reshuffleDiscardPile() {
+        var _a;
         if (this.debugMode) {
             console.log(`[DECK] Attempting reshuffle - deck: ${this.cards.length} cards, discard: ${this.discardPile.length} cards`);
         }
@@ -159,10 +488,11 @@ class UnoDeck {
             console.log(`[DECK] Reshuffled ${cardsToReshuffle} cards back into deck. Top card: ${topCard.color} ${topCard.value}. New deck size: ${this.cards.length}`);
         }
         // Notify parent about reshuffle
-        this.onReshuffle?.(this.cards.length);
+        (_a = this.onReshuffle) === null || _a === void 0 ? void 0 : _a.call(this, this.cards.length);
     }
     // Force reshuffle even with 1 card (for deadlock resolution)
     forceReshuffle() {
+        var _a;
         if (this.discardPile.length === 0)
             return;
         // If only 1 card, create a new deck with that card and shuffle
@@ -179,7 +509,7 @@ class UnoDeck {
             this.shuffle();
         }
         // Notify parent about reshuffle
-        this.onReshuffle?.(this.cards.length);
+        (_a = this.onReshuffle) === null || _a === void 0 ? void 0 : _a.call(this, this.cards.length);
     }
     playCard(card) {
         this.discardPile.push(card);
@@ -207,8 +537,10 @@ class UnoPlayer {
     }
     addCards(cards) {
         this.hand.push(...cards);
-        // Reset UNO call if cards are added (penalty for not calling UNO)
-        if (this.hasOneCard() && !this.hasCalledUno) {
+        // If adding cards results in the hand size being greater than 1,
+        // the player is definitively no longer in an "Uno" state.
+        // This correctly handles all scenarios including forced draws.
+        if (this.hand.length > 1) {
             this.resetUnoCall();
         }
     }
@@ -340,11 +672,18 @@ class UnoGame {
         this.resourceStateHistory = []; // Store recent resource state hashes for resource exhaustion detection
         this.MAX_STATE_HISTORY = 20; // Maximum number of states to track
         this.DEADLOCK_CYCLE_THRESHOLD = 3; // Number of times a state must repeat to indicate deadlock
-        this.rules = { ...exports.DEFAULT_RULES, ...rules };
+        this.enhancedAIStrategy = null;
+        // Pause functionality
+        this.isPaused = false;
+        this.previousPhase = null;
+        this.rules = Object.assign(Object.assign({}, exports.DEFAULT_RULES), rules);
         this.events = events;
         this.deck = new UnoDeck((remaining) => {
             this.emitEvent('onDeckReshuffled', remaining);
         }, this.rules.debugMode);
+        // Initialize enhanced AI strategy system
+        this.stateTracker = new GameStateTracker();
+        this.enhancedAIStrategy = new ExpertAIStrategy(this.stateTracker);
         this.initializePlayers(playerNames, humanPlayerIndex);
         if (!skipInitialDeal) {
             this.dealInitialCards();
@@ -358,9 +697,10 @@ class UnoGame {
     }
     // Enhanced debug logging for microscopic analysis
     debugLog(category, message, data) {
+        var _a;
         if (this.rules.debugMode) {
             const timestamp = new Date().toISOString();
-            const playerName = this.getCurrentPlayer()?.name || 'Unknown';
+            const playerName = ((_a = this.getCurrentPlayer()) === null || _a === void 0 ? void 0 : _a.name) || 'Unknown';
             const turnInfo = `[Turn ${this.turnCount}] [${playerName}]`;
             const categoryTag = `[${category.toUpperCase()}]`;
             console.log(`${timestamp} ${turnInfo} ${categoryTag} ${message}`, data || '');
@@ -368,10 +708,11 @@ class UnoGame {
     }
     // Log game state for debugging
     logGameState(context) {
+        var _a;
         if (!this.rules.debugMode)
             return;
         const state = {
-            currentPlayer: this.getCurrentPlayer()?.name,
+            currentPlayer: (_a = this.getCurrentPlayer()) === null || _a === void 0 ? void 0 : _a.name,
             turnCount: this.turnCount,
             phase: this.phase,
             direction: this.direction,
@@ -453,7 +794,7 @@ class UnoGame {
         // Draw first card for discard pile
         let firstCard = this.deck.drawCard();
         // Handle all action cards as first card according to official rules
-        while (firstCard?.isActionCard()) {
+        while (firstCard === null || firstCard === void 0 ? void 0 : firstCard.isActionCard()) {
             if (firstCard.value === "Wild Draw Four") {
                 // Wild Draw Four cannot be the first card - return to deck, shuffle, and draw new card
                 this.log("Wild Draw Four as first card - returning to deck and reshuffling");
@@ -497,16 +838,33 @@ class UnoGame {
         }
     }
     startUnoChallengeTimer(player) {
+        // Don't start challenge timers for AI players
+        if (!player.isHuman) {
+            this.debugLog('UNO', `Skipping challenge timer for AI player ${player.name}`);
+            return;
+        }
         // Clear any existing timer for this player
         this.clearUnoChallengeTimer(player.id);
-        // Start new timer
+        // Start new timer for human players only
         const timer = setTimeout(() => {
             if (player.hasOneCard() && !player.getHasCalledUno()) {
-                // Auto-penalty if UNO not called within time window
                 this.log("UNO challenge timer expired - applying penalty to", player.name);
                 const result = this.deck.drawCards(2);
+                // Debug logging for UNO penalty card additions
+                if (this.rules.debugMode) {
+                    const wasCalledUno = player.getHasCalledUno();
+                    const hadOneCard = player.hasOneCard();
+                    const previousHandSize = player.getHandSize();
+                    console.log(`[UNO PENALTY] ${player.name} cards being added:`, result.drawnCards.map(c => `${c.color} ${c.value}`));
+                    console.log(`[UNO PENALTY] ${player.name} hand size: ${previousHandSize} -> ${previousHandSize + result.drawnCards.length}`);
+                    console.log(`[UNO PENALTY] ${player.name} UNO state: wasCalledUno=${wasCalledUno}, hadOneCard=${hadOneCard}`);
+                }
                 player.addCards(result.drawnCards);
                 player.resetUnoCall();
+                // Debug logging for UNO call reset
+                if (this.rules.debugMode) {
+                    console.log(`[UNO PENALTY] ${player.name} UNO call reset due to penalty`);
+                }
             }
             this.unoChallengeTimers.delete(player.id);
         }, this.unoChallengeWindow);
@@ -567,6 +925,8 @@ class UnoGame {
         this.wildColor = null;
         // Emit card played event
         this.emitEvent('onCardPlayed', player, playedCard, chosenWildColor);
+        // Update state tracker for enhanced AI
+        this.stateTracker.onCardPlayed(playedCard, player.id);
         // Handle UNO state
         this._handleUnoState(player, isUnoCall);
         // Handle special card effects FIRST (even if this is the winning card)
@@ -642,20 +1002,32 @@ class UnoGame {
      */
     _handleUnoState(player, isUnoCall) {
         if (player.hasOneCard()) {
-            // Check if the AI should be calling UNO on this turn.
-            const shouldAutoCallUno = !player.isHuman && isUnoCall;
-            if (shouldAutoCallUno || player.getHasCalledUno()) {
-                // If the AI should call UNO, update its state now.
-                if (shouldAutoCallUno) {
-                    player.callUno(); // <-- This line is the fix.
+            // CRITICAL FIX: AI players must always call UNO automatically
+            if (!player.isHuman) {
+                if (!player.getHasCalledUno()) {
+                    player.callUno(); // This was the missing piece
                 }
                 this.lastPlayerWithOneCard = player;
                 this.clearUnoChallengeTimer(player.id);
                 this.emitEvent('onUnoCalled', player);
+                this.debugLog('UNO', `${player.name} (AI) automatically called UNO`);
             }
             else {
-                // This path is now correctly reserved for human players who forget to call UNO.
-                this.startUnoChallengeTimer(player);
+                // Human players - existing logic
+                if (isUnoCall || player.getHasCalledUno()) {
+                    if (isUnoCall && !player.getHasCalledUno()) {
+                        player.callUno();
+                    }
+                    this.lastPlayerWithOneCard = player;
+                    this.clearUnoChallengeTimer(player.id);
+                    this.emitEvent('onUnoCalled', player);
+                    this.debugLog('UNO', `${player.name} (Human) called UNO`);
+                }
+                else {
+                    // Human forgot to call UNO - start penalty timer
+                    this.startUnoChallengeTimer(player);
+                    this.debugLog('UNO', `${player.name} (Human) forgot to call UNO - timer started`);
+                }
             }
         }
     }
@@ -680,6 +1052,7 @@ class UnoGame {
         }
     }
     handleCardEffect(card, chosenWildColor) {
+        var _a, _b;
         this.debugLog('EFFECT', `Handling card effect for ${card.color} ${card.value}`);
         let effect = "";
         switch (card.value) {
@@ -705,7 +1078,7 @@ class UnoGame {
                 break;
             case "Draw Two":
                 // Check if we can stack on previous Draw Two
-                if (this.lastActionCard?.value === "Draw Two") {
+                if (((_a = this.lastActionCard) === null || _a === void 0 ? void 0 : _a.value) === "Draw Two") {
                     this.drawPenalty += 2;
                     effect = "Stack Draw Two (+" + this.drawPenalty + ")";
                     this.debugLog('EFFECT', `Draw Two stacked - penalty increased to ${this.drawPenalty}`);
@@ -719,14 +1092,14 @@ class UnoGame {
                 this.lastActionCard = card;
                 break;
             case "Wild":
-                this.wildColor = chosenWildColor || this.getCurrentPlayer().chooseWildColor();
+                this.wildColor = chosenWildColor || this.chooseWildColorForCurrentPlayer();
                 this.lastActionCard = null; // Reset action card tracking
                 effect = "Wild - color changed to " + this.wildColor;
                 this.debugLog('EFFECT', `Wild card played - color changed to ${this.wildColor}`);
                 break;
             case "Wild Draw Four":
                 // Check if we can stack on previous Wild Draw Four
-                if (this.lastActionCard?.value === "Wild Draw Four") {
+                if (((_b = this.lastActionCard) === null || _b === void 0 ? void 0 : _b.value) === "Wild Draw Four") {
                     this.drawPenalty += 4;
                     effect = "Stack Wild Draw Four (+" + this.drawPenalty + ")";
                     this.debugLog('EFFECT', `Wild Draw Four stacked - penalty increased to ${this.drawPenalty}`);
@@ -736,7 +1109,7 @@ class UnoGame {
                     effect = "Wild Draw Four";
                     this.debugLog('EFFECT', 'Wild Draw Four effect applied - penalty set to 4');
                 }
-                this.wildColor = chosenWildColor || this.getCurrentPlayer().chooseWildColor();
+                this.wildColor = chosenWildColor || this.chooseWildColorForCurrentPlayer();
                 this.skipNext = true;
                 this.lastActionCard = card;
                 break;
@@ -849,6 +1222,15 @@ class UnoGame {
         }
         if (card) {
             this.debugLog('DRAW', `${player.name} successfully drew: ${card.color} ${card.value}`);
+            // Debug logging for card additions
+            if (this.rules.debugMode) {
+                const wasCalledUno = player.getHasCalledUno();
+                const hadOneCard = player.hasOneCard();
+                const previousHandSize = player.getHandSize();
+                console.log(`[PLAYER] ${player.name} cards being added:`, [card].map(c => `${c.color} ${c.value}`));
+                console.log(`[PLAYER] ${player.name} hand size: ${previousHandSize} -> ${previousHandSize + 1}`);
+                console.log(`[PLAYER] ${player.name} UNO state: wasCalledUno=${wasCalledUno}, hadOneCard=${hadOneCard}`);
+            }
             player.addCards([card]);
             // Log updated hand after drawing
             this.debugLog('DRAW', `${player.name} hand after drawing:`, {
@@ -876,6 +1258,8 @@ class UnoGame {
                     }
                     // Emit card drawn and auto-played event
                     this.emitEvent('onCardDrawn', player, card, true);
+                    // Update state tracker for enhanced AI
+                    this.stateTracker.onCardDrawn(player.id, card);
                     // Handle UNO call for drawn card
                     if (player.hasOneCard()) {
                         // For AI players, automatically call UNO when they have one card
@@ -929,6 +1313,8 @@ class UnoGame {
             else {
                 // Emit card drawn but not auto-played event
                 this.emitEvent('onCardDrawn', player, card, false);
+                // Update state tracker for enhanced AI
+                this.stateTracker.onCardDrawn(player.id, card);
             }
         }
         else {
@@ -1071,7 +1457,7 @@ class UnoGame {
     canChallengeWildDrawFour(targetPlayerId) {
         const targetPlayer = this.players.find(p => p.id === targetPlayerId);
         const topCard = this.getTopCard();
-        return !!(targetPlayer && topCard?.value === "Wild Draw Four" && this.previousActiveColor);
+        return !!(targetPlayer && (topCard === null || topCard === void 0 ? void 0 : topCard.value) === "Wild Draw Four" && this.previousActiveColor);
     }
     // Check if a player can jump in with a specific card
     canJumpIn(playerId, cardId) {
@@ -1116,7 +1502,11 @@ class UnoGame {
         let step = this.direction === "clockwise" ? 1 : -1;
         if (this.skipNext) {
             this.debugLog('TURN', `Skipping next player due to skip effect`);
-            this.currentPlayerIndex = (this.currentPlayerIndex + step + this.players.length) % this.players.length;
+            const skippedPlayerIndex = (this.currentPlayerIndex + step + this.players.length) % this.players.length;
+            const skippedPlayer = this.players[skippedPlayerIndex];
+            // Update state tracker for enhanced AI
+            this.stateTracker.onPlayerSkipped(skippedPlayer.id);
+            this.currentPlayerIndex = skippedPlayerIndex;
             this.skipNext = false;
         }
         this.currentPlayerIndex = (this.currentPlayerIndex + step + this.players.length) % this.players.length;
@@ -1129,6 +1519,10 @@ class UnoGame {
             current.addCards(result.drawnCards);
             this.log(`${current.name} drew ${result.drawnCards.length} as penalty (requested: ${this.drawPenalty})`);
             this.debugLog('TURN', `Penalty cards drawn: ${result.drawnCards.map(c => `${c.color} ${c.value}`).join(', ')}`);
+            // FIX: Update state tracker for penalty draws
+            result.drawnCards.forEach(card => {
+                this.stateTracker.onCardDrawn(current.id, card);
+            });
             // Check if deck was exhausted during penalty
             if (result.isExhausted && result.drawnCards.length < this.drawPenalty) {
                 this.debugLog('DEADLOCK', `Deck exhausted during penalty draw. Drew ${result.drawnCards.length}/${this.drawPenalty} cards.`);
@@ -1231,7 +1625,38 @@ class UnoGame {
         return this.roundWinner;
     }
     getRules() {
-        return { ...this.rules };
+        return Object.assign({}, this.rules);
+    }
+    // Pause functionality
+    pause() {
+        if (this.phase === "game_over" || this.isPaused)
+            return;
+        this.previousPhase = this.phase;
+        this.phase = "paused";
+        this.isPaused = true;
+        this.log("Game paused");
+    }
+    resume() {
+        if (!this.isPaused)
+            return;
+        if (this.previousPhase) {
+            this.phase = this.previousPhase;
+            this.previousPhase = null;
+        }
+        else {
+            this.phase = "playing";
+        }
+        this.isPaused = false;
+        this.log("Game resumed");
+    }
+    isGamePaused() {
+        return this.isPaused;
+    }
+    getPauseState() {
+        return {
+            isPaused: this.isPaused,
+            previousPhase: this.previousPhase
+        };
     }
     // Get deadlock detection information for debugging
     getDeadlockInfo() {
@@ -1642,6 +2067,8 @@ class UnoGame {
         this.turnCount = 0;
         // Reset state history for enhanced deadlock detection
         this.gameStateHistory = [];
+        // Reset enhanced AI state tracker
+        this.stateTracker.reset();
         // Clear all UNO challenge timers
         this.unoChallengeTimers.forEach((timer) => clearTimeout(timer));
         this.unoChallengeTimers.clear();
@@ -1670,9 +2097,9 @@ class UnoGame {
         const currentPlayer = this.getCurrentPlayer();
         this.debugLog('AI', `AI turn initiated for ${currentPlayer.name}`);
         this.log("playAITurn - current player:", currentPlayer.name, "isHuman:", currentPlayer.isHuman, "phase:", this.phase);
-        if (currentPlayer.isHuman || this.phase !== "playing") {
-            this.debugLog('AI', `AI turn blocked - isHuman: ${currentPlayer.isHuman}, phase: ${this.phase}`);
-            this.log("playAITurn early return - isHuman:", currentPlayer.isHuman, "phase:", this.phase);
+        if (currentPlayer.isHuman || this.phase !== "playing" || this.isPaused) {
+            this.debugLog('AI', `AI turn blocked - isHuman: ${currentPlayer.isHuman}, phase: ${this.phase}, paused: ${this.isPaused}`);
+            this.log("playAITurn early return - isHuman:", currentPlayer.isHuman, "phase:", this.phase, "paused:", this.isPaused);
             return false;
         }
         // Add realistic AI delay based on difficulty
@@ -1688,7 +2115,7 @@ class UnoGame {
     decideAITurn() {
         const currentPlayer = this.getCurrentPlayer();
         const topCard = this.getTopCard();
-        if (!topCard)
+        if (!topCard || this.isPaused)
             return null;
         // Try to play a card
         const cardToPlay = this.chooseAICard(currentPlayer, topCard);
@@ -1729,29 +2156,21 @@ class UnoGame {
     }
     executeAITurn(currentPlayer) {
         this.debugLog('AI', `${currentPlayer.name} making AI decision...`);
-        // Log current hand and playable cards before decision
-        const topCard = this.getTopCard();
-        if (topCard) {
-            const playableCards = currentPlayer.getPlayableCards(topCard, this.wildColor || undefined);
-            this.debugLog('AI', `${currentPlayer.name} decision analysis:`, {
-                handSize: currentPlayer.getHandSize(),
-                handCards: currentPlayer.getHand().map(c => `${c.color} ${c.value}`),
-                topCard: `${topCard.color} ${topCard.value}`,
-                wildColor: this.wildColor,
-                playableCards: playableCards.map(c => `${c.color} ${c.value}`),
-                playableCount: playableCards.length
-            });
-        }
         const decision = this.decideAITurn();
         if (!decision) {
-            this.debugLog('AI', `${currentPlayer.name} could not decide on action - no playable cards and must draw`);
-            this.log("AI could not decide on action");
+            this.debugLog('AI', `${currentPlayer.name} could not decide on action`);
             return;
         }
-        this.debugLog('AI', `${currentPlayer.name} decided to ${decision.action}`, decision);
-        const success = this.applyAIAction(decision);
-        this.debugLog('AI', `${currentPlayer.name} action result: ${success}`);
-        this.log("AI action result:", success, "action:", decision.action);
+        if (decision.action === 'play' && decision.cardId) {
+            // Check if AI will have one card after this play
+            const willHaveOneCard = currentPlayer.getHandSize() === 2;
+            // CRITICAL FIX: Always call UNO for AI players when they'll have one card
+            const success = this.playCard(currentPlayer.id, decision.cardId, decision.chosenColor, willHaveOneCard);
+            this.debugLog('AI', `${currentPlayer.name} action result: ${success}`);
+        }
+        else if (decision.action === 'draw') {
+            this.drawCard(currentPlayer.id);
+        }
     }
     // Enhanced AI card selection based on difficulty
     chooseAICard(player, topCard) {
@@ -1776,8 +2195,8 @@ class UnoGame {
                 this.debugLog('AI', `${player.name} using hard strategy`);
                 break;
             case 'expert':
-                selectedCard = this.expertAIStrategy(playableCards, topCard, player);
-                this.debugLog('AI', `${player.name} using expert strategy`);
+                selectedCard = this.enhancedExpertAIStrategy(playableCards, topCard, player);
+                this.debugLog('AI', `${player.name} using enhanced expert strategy`);
                 break;
             default:
                 selectedCard = this.normalAIStrategy(playableCards, topCard);
@@ -1875,12 +2294,56 @@ class UnoGame {
         // Default to hard strategy
         return this.hardAIStrategy(playableCards, topCard, player);
     }
+    // Enhanced Expert AI Strategy using the new strategy system
+    enhancedExpertAIStrategy(playableCards, topCard, player) {
+        if (!this.enhancedAIStrategy) {
+            // Fallback to original expert strategy if enhanced strategy is not available
+            return this.expertAIStrategy(playableCards, topCard, player);
+        }
+        // Get current game state for the enhanced AI using the new interface
+        const gameStateForAI = {
+            players: this.players.map(p => ({
+                id: p.id,
+                name: p.name,
+                handSize: p.getHandSize(),
+                isHuman: p.isHuman
+            })),
+            currentPlayerId: this.getCurrentPlayer().id,
+            topCard: this.getTopCard(),
+            wildColor: this.wildColor,
+            direction: this.direction,
+        };
+        // Use the enhanced AI strategy
+        return this.enhancedAIStrategy.chooseCard(playableCards, gameStateForAI, player);
+    }
+    // Enhanced wild color selection for AI players
+    chooseWildColorForCurrentPlayer() {
+        const currentPlayer = this.getCurrentPlayer();
+        // Use enhanced AI strategy for expert difficulty AI players
+        if (!currentPlayer.isHuman && this.rules.aiDifficulty === 'expert' && this.enhancedAIStrategy) {
+            const gameStateForAI = {
+                players: this.players.map(p => ({
+                    id: p.id,
+                    name: p.name,
+                    handSize: p.getHandSize(),
+                    isHuman: p.isHuman
+                })),
+                currentPlayerId: this.getCurrentPlayer().id,
+                topCard: this.getTopCard(),
+                wildColor: this.wildColor,
+                direction: this.direction,
+            };
+            return this.enhancedAIStrategy.chooseWildColor(currentPlayer.getHand(), gameStateForAI, currentPlayer);
+        }
+        // Fallback to original player method
+        return currentPlayer.chooseWildColor();
+    }
     getNextPlayer() {
         const nextIndex = this.getNextPlayerIndex();
         return this.players[nextIndex];
     }
     getNextPlayerIndex(fromIndex) {
-        const currentIndex = fromIndex ?? this.currentPlayerIndex;
+        const currentIndex = fromIndex !== null && fromIndex !== void 0 ? fromIndex : this.currentPlayerIndex;
         const playerCount = this.players.length;
         this.log("getNextPlayerIndex - from:", currentIndex, "direction:", this.direction, "playerCount:", playerCount);
         let nextIndex;
@@ -1892,6 +2355,30 @@ class UnoGame {
         }
         this.log("Calculated next index:", nextIndex);
         return nextIndex;
+    }
+    // Fix 6: Add method to check why AI can't finish
+    debugAIPlayerState(playerId) {
+        const player = this.players.find(p => p.id === playerId);
+        if (!player || player.isHuman)
+            return null;
+        const topCard = this.getTopCard();
+        const playableCards = topCard ? player.getPlayableCards(topCard, this.wildColor || undefined) : [];
+        return {
+            playerName: player.name,
+            handSize: player.getHandSize(),
+            handCards: player.getHand().map(c => `${c.color} ${c.value}`),
+            hasCalledUno: player.getHasCalledUno(),
+            hasOneCard: player.hasOneCard(),
+            shouldBePenalized: player.shouldBePenalizedForUno(),
+            playableCards: playableCards.map(c => `${c.color} ${c.value}`),
+            topCard: topCard ? `${topCard.color} ${topCard.value}` : 'none',
+            wildColor: this.wildColor,
+            phase: this.phase,
+            isCurrentPlayer: this.getCurrentPlayer().id === playerId,
+            challengeTimerActive: this.unoChallengeTimers.has(playerId),
+            consecutiveSkips: this.consecutiveSkips,
+            drawPenalty: this.drawPenalty
+        };
     }
 }
 exports.UnoGame = UnoGame;

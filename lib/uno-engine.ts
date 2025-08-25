@@ -691,22 +691,14 @@ export class UnoPlayer {
   ) { }
 
   addCards(cards: UnoCard[]): void {
-    const wasCalledUno = this.hasCalledUno
-    const hadOneCard = this.hasOneCard()
-    const previousHandSize = this.hand.length
+    this.hand.push(...cards);
 
-    this.hand.push(...cards)
-
-    // CRITICAL FIX: Only reset UNO call if this is clearly a penalty situation
-    // Do NOT reset UNO call if:
-    // 1. Player legitimately called UNO and had one card
-    // 2. This is a forced draw (like Draw Two penalty) where UNO state should persist
-    if (hadOneCard && !wasCalledUno && this.hand.length > 1) {
-      // This was a penalty for not calling UNO
-      this.resetUnoCall()
-      // Note: Debug logging for UNO reset is handled at the engine level where addCards is called
+    // If adding cards results in the hand size being greater than 1,
+    // the player is definitively no longer in an "Uno" state.
+    // This correctly handles all scenarios including forced draws.
+    if (this.hand.length > 1) {
+      this.resetUnoCall();
     }
-    // In all other cases, preserve the UNO call state
   }
 
   removeCard(cardId: string): UnoCard | null {
