@@ -786,13 +786,19 @@ export class UnoGame {
    */
   private _handleUnoState(player: UnoPlayer, isUnoCall: boolean): void {
     if (player.hasOneCard()) {
-      if (isUnoCall || player.getHasCalledUno()) {
-        // Player called UNO correctly (either via parameter or previous call)
+      // Check if the AI should be calling UNO on this turn.
+      const shouldAutoCallUno = !player.isHuman && isUnoCall;
+
+      if (shouldAutoCallUno || player.getHasCalledUno()) {
+        // If the AI should call UNO, update its state now.
+        if (shouldAutoCallUno) {
+          player.callUno(); // <-- This line is the fix.
+        }
         this.lastPlayerWithOneCard = player
         this.clearUnoChallengeTimer(player.id)
         this.emitEvent('onUnoCalled', player)
       } else {
-        // Start UNO challenge timer instead of immediate penalty
+        // This path is now correctly reserved for human players who forget to call UNO.
         this.startUnoChallengeTimer(player)
       }
     }
