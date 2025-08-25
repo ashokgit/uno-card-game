@@ -1047,11 +1047,17 @@ export class UnoGame {
 
           // Handle UNO call for drawn card
           if (player.hasOneCard()) {
-            if (!player.getHasCalledUno()) {
-              this.startUnoChallengeTimer(player)
-            } else {
+            // For AI players, automatically call UNO when they have one card
+            const shouldAutoCallUno = !player.isHuman
+            if (shouldAutoCallUno || player.getHasCalledUno()) {
               this.lastPlayerWithOneCard = player
               this.clearUnoChallengeTimer(player.id)
+              if (shouldAutoCallUno) {
+                player.callUno()
+                this.emitEvent('onUnoCalled', player)
+              }
+            } else {
+              this.startUnoChallengeTimer(player)
             }
           }
 
@@ -2072,7 +2078,10 @@ export class UnoGame {
   // Apply AI decision (pure function)
   applyAIAction(action: { action: 'play' | 'draw'; cardId?: string; chosenColor?: UnoColor }): boolean {
     if (action.action === 'play' && action.cardId) {
-      return this.playCard(this.getCurrentPlayer().id, action.cardId, action.chosenColor)
+      const currentPlayer = this.getCurrentPlayer()
+      // Check if this play will leave the AI with exactly one card (should call UNO)
+      const willHaveOneCard = currentPlayer.getHandSize() === 2
+      return this.playCard(this.getCurrentPlayer().id, action.cardId, action.chosenColor, willHaveOneCard)
     } else if (action.action === 'draw') {
       return this.drawCard(this.getCurrentPlayer().id) !== null
     }
