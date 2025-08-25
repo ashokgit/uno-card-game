@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { GeistSans } from 'geist/font/sans'
 import { GeistMono } from 'geist/font/mono'
 import './globals.css'
+import { SettingsProvider } from '@/contexts/settings-context'
 
 export const metadata: Metadata = {
   title: 'UNO Arena - Ultimate Card Game',
@@ -41,7 +42,11 @@ html {
 }
         `}</style>
       </head>
-      <body>{children}</body>
+      <body>
+        <SettingsProvider>
+          {children}
+        </SettingsProvider>
+      </body>
     </html>
   )
 }

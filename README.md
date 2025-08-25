@@ -38,6 +38,8 @@ A modern, interactive UNO card game built with Next.js, TypeScript, and Tailwind
 - **Performance Tracking**: Level and coin system for progression
 - **Debug Panel**: Real-time game state information for development
 - **Responsive Design**: Works on desktop and mobile devices
+- **Settings Persistence**: Game settings are automatically saved to localStorage
+- **Settings Export/Import**: Backup and share your custom game configurations
 
 ## 🚀 Getting Started
 
@@ -97,6 +99,13 @@ A modern, interactive UNO card game built with Next.js, TypeScript, and Tailwind
 - **Card Count**: Each player's remaining cards are displayed
 - **Action Feedback**: Real-time feedback on your moves and game events
 
+### Settings Management
+- **Automatic Saving**: All settings are automatically saved to your browser's localStorage
+- **Persistent Settings**: Your preferences persist between browser sessions
+- **Export Settings**: Download your settings as a JSON file for backup
+- **Import Settings**: Import previously exported settings to restore your configuration
+- **Reset Options**: Reset individual setting categories or all settings to defaults
+
 ## 🛠️ Technology Stack
 
 ### Frontend
@@ -131,7 +140,10 @@ uno-card-game/
 │   └── page.tsx           # Main game page
 ├── components/            # React components
 │   ├── ui/               # Reusable UI components
+│   ├── game-settings.tsx # Game settings modal
 │   └── uno-cards.tsx     # UNO card components
+├── contexts/             # React contexts
+│   └── settings-context.tsx # Settings management context
 ├── lib/                  # Utility libraries
 │   ├── uno-engine.ts     # Game logic engine
 │   └── utils.ts          # Helper utilities

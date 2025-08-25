@@ -21,9 +21,12 @@ import {
     Target,
     Users,
     Palette,
-    Info
+    Info,
+    Download,
+    Upload
 } from "lucide-react"
 import { UnoRules } from "@/lib/uno-engine"
+import { useSettings } from "@/contexts/settings-context"
 
 interface GameSettingsProps {
     isOpen: boolean
@@ -32,81 +35,59 @@ interface GameSettingsProps {
     currentRules?: UnoRules
 }
 
-interface UISettings {
-    animationSpeed: number
-    soundEffects: boolean
-    backgroundMusic: boolean
-    musicVolume: number
-    visualEffects: boolean
-    autoUnoCall: boolean
-    confirmActionCards: boolean
-    showPlayableCards: boolean
-    gameSpeed: number
-}
-
-const DEFAULT_UI_SETTINGS: UISettings = {
-    animationSpeed: 1.0,
-    soundEffects: true,
-    backgroundMusic: true,
-    musicVolume: 0.3,
-    visualEffects: true,
-    autoUnoCall: false,
-    confirmActionCards: true,
-    showPlayableCards: true,
-    gameSpeed: 1.0,
-}
-
 export function GameSettings({ isOpen, onClose, onStartGame, currentRules }: GameSettingsProps) {
-    const [rules, setRules] = useState<UnoRules>(currentRules || {
-        stackDrawTwo: false,
-        stackDrawFour: false,
-        mustPlayIfDrawable: false,
-        allowDrawWhenPlayable: true,
-        targetScore: 500,
-        debugMode: false,
-        aiDifficulty: 'expert',
-        enableJumpIn: false,
-        enableSevenZero: false,
-        enableSwapHands: false,
-        showDiscardPile: true,
-        deadlockResolution: 'end_round',
-    })
-
-    const [uiSettings, setUISettings] = useState<UISettings>(DEFAULT_UI_SETTINGS)
-    const [playerCount, setPlayerCount] = useState(6)
+    const {
+        uiSettings,
+        gameSettings,
+        updateUISetting,
+        updateRule,
+        updateGameSetting,
+        resetAllSettings,
+        exportSettings,
+        importSettings
+    } = useSettings()
 
     if (!isOpen) return null
 
-    const updateRule = (key: keyof UnoRules, value: any) => {
-        setRules(prev => ({ ...prev, [key]: value }))
-    }
-
-    const updateUISetting = (key: keyof UISettings, value: any) => {
-        setUISettings(prev => ({ ...prev, [key]: value }))
-    }
-
-    const resetToDefaults = () => {
-        setRules({
-            stackDrawTwo: false,
-            stackDrawFour: false,
-            mustPlayIfDrawable: false,
-            allowDrawWhenPlayable: true,
-            targetScore: 500,
-            debugMode: false,
-            aiDifficulty: 'expert',
-            enableJumpIn: false,
-            enableSevenZero: false,
-            enableSwapHands: false,
-            showDiscardPile: true,
-            deadlockResolution: 'end_round',
-        })
-        setUISettings(DEFAULT_UI_SETTINGS)
-        setPlayerCount(6)
-    }
-
     const handleStartGame = () => {
-        onStartGame(rules, playerCount)
+        onStartGame(gameSettings.rules, gameSettings.playerCount)
         onClose()
+    }
+
+    const handleExportSettings = () => {
+        const settingsJson = exportSettings()
+        const blob = new Blob([settingsJson], { type: 'application/json' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `uno-settings-${new Date().toISOString().split('T')[0]}.json`
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+    }
+
+    const handleImportSettings = () => {
+        const input = document.createElement('input')
+        input.type = 'file'
+        input.accept = '.json'
+        input.onchange = (e) => {
+            const file = (e.target as HTMLInputElement).files?.[0]
+            if (file) {
+                const reader = new FileReader()
+                reader.onload = (e) => {
+                    const content = e.target?.result as string
+                    const success = importSettings(content)
+                    if (success) {
+                        alert('Settings imported successfully!')
+                    } else {
+                        alert('Failed to import settings. Please check the file format.')
+                    }
+                }
+                reader.readAsText(file)
+            }
+        }
+        input.click()
     }
 
     return (
@@ -124,7 +105,27 @@ export function GameSettings({ isOpen, onClose, onStartGame, currentRules }: Gam
                             <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={resetToDefaults}
+                                onClick={handleExportSettings}
+                                className="bg-slate-700/50 text-white border-slate-500/50 hover:bg-slate-600/50 hover:border-slate-400/50"
+                                title="Export Settings"
+                            >
+                                <Download className="w-4 h-4 mr-2" />
+                                Export
+                            </Button>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={handleImportSettings}
+                                className="bg-slate-700/50 text-white border-slate-500/50 hover:bg-slate-600/50 hover:border-slate-400/50"
+                                title="Import Settings"
+                            >
+                                <Upload className="w-4 h-4 mr-2" />
+                                Import
+                            </Button>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={resetAllSettings}
                                 className="bg-slate-700/50 text-white border-slate-500/50 hover:bg-slate-600/50 hover:border-slate-400/50"
                             >
                                 <RotateCcw className="w-4 h-4 mr-2" />
@@ -176,12 +177,12 @@ export function GameSettings({ isOpen, onClose, onStartGame, currentRules }: Gam
                                     </h3>
                                     <div className="space-y-4">
                                         <div className="flex items-center justify-between">
-                                                                                         <div>
-                                                 <p className="text-white font-medium">Stack Draw Two</p>
-                                                 <p className="text-white/80 text-sm">Allow stacking Draw Two cards</p>
-                                             </div>
+                                            <div>
+                                                <p className="text-white font-medium">Stack Draw Two</p>
+                                                <p className="text-white/80 text-sm">Allow stacking Draw Two cards</p>
+                                            </div>
                                             <Switch
-                                                checked={rules.stackDrawTwo}
+                                                checked={gameSettings.rules.stackDrawTwo}
                                                 onCheckedChange={(checked) => updateRule('stackDrawTwo', checked)}
                                             />
                                         </div>
@@ -191,7 +192,7 @@ export function GameSettings({ isOpen, onClose, onStartGame, currentRules }: Gam
                                                 <p className="text-gray-400 text-sm">Allow stacking Wild Draw Four cards</p>
                                             </div>
                                             <Switch
-                                                checked={rules.stackDrawFour}
+                                                checked={gameSettings.rules.stackDrawFour}
                                                 onCheckedChange={(checked) => updateRule('stackDrawFour', checked)}
                                             />
                                         </div>
@@ -201,7 +202,7 @@ export function GameSettings({ isOpen, onClose, onStartGame, currentRules }: Gam
                                                 <p className="text-gray-400 text-sm">Force playing drawn cards if possible</p>
                                             </div>
                                             <Switch
-                                                checked={rules.mustPlayIfDrawable}
+                                                checked={gameSettings.rules.mustPlayIfDrawable}
                                                 onCheckedChange={(checked) => updateRule('mustPlayIfDrawable', checked)}
                                             />
                                         </div>
@@ -211,7 +212,7 @@ export function GameSettings({ isOpen, onClose, onStartGame, currentRules }: Gam
                                                 <p className="text-gray-400 text-sm">Allow drawing even with playable cards</p>
                                             </div>
                                             <Switch
-                                                checked={rules.allowDrawWhenPlayable}
+                                                checked={gameSettings.rules.allowDrawWhenPlayable}
                                                 onCheckedChange={(checked) => updateRule('allowDrawWhenPlayable', checked)}
                                             />
                                         </div>
@@ -233,7 +234,7 @@ export function GameSettings({ isOpen, onClose, onStartGame, currentRules }: Gam
                                                 <p className="text-gray-400 text-sm">Play identical cards out of turn</p>
                                             </div>
                                             <Switch
-                                                checked={rules.enableJumpIn}
+                                                checked={gameSettings.rules.enableJumpIn}
                                                 onCheckedChange={(checked) => updateRule('enableJumpIn', checked)}
                                             />
                                         </div>
@@ -243,7 +244,7 @@ export function GameSettings({ isOpen, onClose, onStartGame, currentRules }: Gam
                                                 <p className="text-gray-400 text-sm">Enable 7-0 hand swapping and rotation</p>
                                             </div>
                                             <Switch
-                                                checked={rules.enableSevenZero}
+                                                checked={gameSettings.rules.enableSevenZero}
                                                 onCheckedChange={(checked) => updateRule('enableSevenZero', checked)}
                                             />
                                         </div>
@@ -253,7 +254,7 @@ export function GameSettings({ isOpen, onClose, onStartGame, currentRules }: Gam
                                                 <p className="text-gray-400 text-sm">Enable hand swapping house rule</p>
                                             </div>
                                             <Switch
-                                                checked={rules.enableSwapHands}
+                                                checked={gameSettings.rules.enableSwapHands}
                                                 onCheckedChange={(checked) => updateRule('enableSwapHands', checked)}
                                             />
                                         </div>
@@ -273,7 +274,7 @@ export function GameSettings({ isOpen, onClose, onStartGame, currentRules }: Gam
                                             <label className="text-white font-medium">Target Score</label>
                                             <div className="flex items-center gap-4 mt-2">
                                                 <Slider
-                                                    value={[rules.targetScore]}
+                                                    value={[gameSettings.rules.targetScore]}
                                                     onValueChange={([value]) => updateRule('targetScore', value)}
                                                     max={1000}
                                                     min={100}
@@ -281,7 +282,7 @@ export function GameSettings({ isOpen, onClose, onStartGame, currentRules }: Gam
                                                     className="flex-1"
                                                 />
                                                 <Badge className="bg-blue-600 text-white min-w-[60px] text-center">
-                                                    {rules.targetScore}
+                                                    {gameSettings.rules.targetScore}
                                                 </Badge>
                                             </div>
                                         </div>
@@ -299,7 +300,7 @@ export function GameSettings({ isOpen, onClose, onStartGame, currentRules }: Gam
                                     <div className="space-y-4">
                                         <div>
                                             <label className="text-white font-medium">Number of Players</label>
-                                            <Select value={playerCount.toString()} onValueChange={(value) => setPlayerCount(parseInt(value))}>
+                                            <Select value={gameSettings.playerCount.toString()} onValueChange={(value) => updateGameSetting('playerCount', parseInt(value))}>
                                                 <SelectTrigger className="mt-2 bg-black/50 border-white/20 text-white">
                                                     <SelectValue />
                                                 </SelectTrigger>
@@ -329,7 +330,7 @@ export function GameSettings({ isOpen, onClose, onStartGame, currentRules }: Gam
                                 <div className="space-y-6">
                                     <div>
                                         <label className="text-white font-medium">AI Difficulty</label>
-                                        <Select value={rules.aiDifficulty} onValueChange={(value: any) => updateRule('aiDifficulty', value)}>
+                                        <Select value={gameSettings.rules.aiDifficulty} onValueChange={(value: any) => updateRule('aiDifficulty', value)}>
                                             <SelectTrigger className="mt-2 bg-black/50 border-white/20 text-white">
                                                 <SelectValue />
                                             </SelectTrigger>
@@ -532,13 +533,13 @@ export function GameSettings({ isOpen, onClose, onStartGame, currentRules }: Gam
                                             <p className="text-gray-400 text-sm">Show detailed game information</p>
                                         </div>
                                         <Switch
-                                            checked={rules.debugMode}
+                                            checked={gameSettings.rules.debugMode}
                                             onCheckedChange={(checked) => updateRule('debugMode', checked)}
                                         />
                                     </div>
                                     <div>
                                         <label className="text-white font-medium">Deadlock Resolution</label>
-                                        <Select value={rules.deadlockResolution} onValueChange={(value: any) => updateRule('deadlockResolution', value)}>
+                                        <Select value={gameSettings.rules.deadlockResolution} onValueChange={(value: any) => updateRule('deadlockResolution', value)}>
                                             <SelectTrigger className="mt-2 bg-black/50 border-white/20 text-white">
                                                 <SelectValue />
                                             </SelectTrigger>
@@ -558,7 +559,7 @@ export function GameSettings({ isOpen, onClose, onStartGame, currentRules }: Gam
                                             <p className="text-gray-400 text-sm">Allow viewing entire discard pile</p>
                                         </div>
                                         <Switch
-                                            checked={rules.showDiscardPile}
+                                            checked={gameSettings.rules.showDiscardPile}
                                             onCheckedChange={(checked) => updateRule('showDiscardPile', checked)}
                                         />
                                     </div>
@@ -573,7 +574,7 @@ export function GameSettings({ isOpen, onClose, onStartGame, currentRules }: Gam
                         <div className="flex items-center gap-4">
                             <Info className="w-5 h-5 text-blue-400" />
                             <p className="text-gray-400 text-sm">
-                                Settings will be applied when you start a new game
+                                Settings are automatically saved and will persist between sessions. Use Export/Import to backup or share your settings.
                             </p>
                         </div>
                         <div className="flex items-center gap-3">

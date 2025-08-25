@@ -103,20 +103,7 @@ function UnoGameInner() {
   const [pendingWildCard, setPendingWildCard] = useState<GameCard | null>(null)
   const [showMainMenu, setShowMainMenu] = useState(true)
   const [aiThinking, setAiThinking] = useState<{ playerName: string; startTime: number } | null>(null)
-  const [currentRules, setCurrentRules] = useState<UnoRules>({
-    stackDrawTwo: false,
-    stackDrawFour: false,
-    mustPlayIfDrawable: false,
-    allowDrawWhenPlayable: true,
-    targetScore: 500,
-    debugMode: false,
-    aiDifficulty: 'expert',
-    enableJumpIn: false,
-    enableSevenZero: false,
-    enableSwapHands: false,
-    showDiscardPile: true,
-    deadlockResolution: 'end_round',
-  })
+  const { gameSettings } = useSettings()
 
   // Background music state
   const [isMusicPlaying, setIsMusicPlaying] = useState(false)
@@ -196,7 +183,6 @@ function UnoGameInner() {
   const startGame = (rules: UnoRules, playerCount: number) => {
     const playerNames = ["You", "Alice", "Bob", "Carol", "Dave", "Eve"].slice(0, playerCount)
     initializeGameEngine(playerNames, rules)
-    setCurrentRules(rules)
     setShowMainMenu(false)
   }
 

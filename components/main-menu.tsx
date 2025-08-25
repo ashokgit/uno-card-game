@@ -13,6 +13,7 @@ import {
 import { GameSettings } from "./game-settings"
 import { RulesModal } from "./rules-modal"
 import { UnoRules } from "@/lib/uno-engine"
+import { useSettings } from "@/contexts/settings-context"
 
 interface MainMenuProps {
     onStartGame: (rules: UnoRules, playerCount: number) => void
@@ -21,28 +22,14 @@ interface MainMenuProps {
 export function MainMenu({ onStartGame }: MainMenuProps) {
     const [showSettings, setShowSettings] = useState(false)
     const [showRules, setShowRules] = useState(false)
-    const [currentRules, setCurrentRules] = useState<UnoRules>({
-        stackDrawTwo: false,
-        stackDrawFour: false,
-        mustPlayIfDrawable: false,
-        allowDrawWhenPlayable: true,
-        targetScore: 500,
-        debugMode: false,
-        aiDifficulty: 'expert',
-        enableJumpIn: false,
-        enableSevenZero: false,
-        enableSwapHands: false,
-        showDiscardPile: true,
-        deadlockResolution: 'end_round',
-    })
+    const { gameSettings } = useSettings()
 
     const handleStartGame = (rules: UnoRules, playerCount: number) => {
-        setCurrentRules(rules)
         onStartGame(rules, playerCount)
     }
 
     const quickStart = () => {
-        onStartGame(currentRules, 6)
+        onStartGame(gameSettings.rules, gameSettings.playerCount)
     }
 
     return (
@@ -102,8 +89,8 @@ export function MainMenu({ onStartGame }: MainMenuProps) {
                                     <Play className="w-10 h-10 text-white" />
                                 </div>
                                 <h3 className="text-2xl font-bold text-white mb-3">Quick Start</h3>
-                                <p className="text-white/90 text-base mb-6 leading-relaxed font-medium">Jump right into the action with default settings</p>
-                                <Badge className="bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold shadow-md text-sm px-4 py-2">6 Players • Expert AI</Badge>
+                                <p className="text-white/90 text-base mb-6 leading-relaxed font-medium">Jump right into the action with saved settings</p>
+                                <Badge className="bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold shadow-md text-sm px-4 py-2">{gameSettings.playerCount} Players • {gameSettings.rules.aiDifficulty} AI</Badge>
                             </div>
                         </Card>
 
@@ -138,25 +125,25 @@ export function MainMenu({ onStartGame }: MainMenuProps) {
                     <Card className="p-6 bg-gradient-to-br from-slate-800/50 to-slate-700/50 border-slate-600/30 mb-8 shadow-lg">
                         <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
                             <Info className="w-5 h-5 text-cyan-400" />
-                            Current Settings
+                            Saved Settings
                         </h3>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                             <div className="text-center bg-black/20 rounded-lg p-3 border border-white/10">
                                 <p className="text-white/90 text-sm font-semibold">Players</p>
-                                <p className="text-white font-bold text-lg">6</p>
+                                <p className="text-white font-bold text-lg">{gameSettings.playerCount}</p>
                             </div>
                             <div className="text-center bg-black/20 rounded-lg p-3 border border-white/10">
                                 <p className="text-white/90 text-sm font-semibold">AI Difficulty</p>
-                                <p className="text-white font-bold text-lg capitalize">{currentRules.aiDifficulty}</p>
+                                <p className="text-white font-bold text-lg capitalize">{gameSettings.rules.aiDifficulty}</p>
                             </div>
                             <div className="text-center bg-black/20 rounded-lg p-3 border border-white/10">
                                 <p className="text-white/90 text-sm font-semibold">Target Score</p>
-                                <p className="text-white font-bold text-lg">{currentRules.targetScore}</p>
+                                <p className="text-white font-bold text-lg">{gameSettings.rules.targetScore}</p>
                             </div>
                             <div className="text-center bg-black/20 rounded-lg p-3 border border-white/10">
                                 <p className="text-white/90 text-sm font-semibold">House Rules</p>
                                 <p className="text-white font-bold text-lg">
-                                    {currentRules.enableJumpIn || currentRules.enableSevenZero || currentRules.enableSwapHands ? 'Enabled' : 'Off'}
+                                    {gameSettings.rules.enableJumpIn || gameSettings.rules.enableSevenZero || gameSettings.rules.enableSwapHands ? 'Enabled' : 'Off'}
                                 </p>
                             </div>
                         </div>
@@ -189,7 +176,7 @@ export function MainMenu({ onStartGame }: MainMenuProps) {
                 isOpen={showSettings}
                 onClose={() => setShowSettings(false)}
                 onStartGame={handleStartGame}
-                currentRules={currentRules}
+                currentRules={gameSettings.rules}
             />
 
             {/* Rules Modal */}
