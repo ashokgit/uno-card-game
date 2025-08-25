@@ -2066,7 +2066,7 @@ function UnoGameInner() {
               <div className="absolute inset-0 overflow-hidden rounded-2xl">
                 {[...Array(8)].map((_, i) => (
                   <div
-                    key={i}
+                    key={`feedback-particle-${i}`}
                     className="absolute w-2 h-2 bg-white rounded-full animate-ping"
                     style={{
                       left: `${Math.random() * 100}%`,
@@ -2128,7 +2128,7 @@ function UnoGameInner() {
             <div className="absolute inset-0 overflow-hidden rounded-3xl">
               {[...Array(12)].map((_, i) => (
                 <div
-                  key={i}
+                  key={`color-particle-${i}`}
                   className={`
                     absolute w-3 h-3 rounded-full animate-ping
                     ${colorConfirmation.color === "red" ? "bg-red-300" : ""}
