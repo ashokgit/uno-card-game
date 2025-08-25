@@ -450,7 +450,8 @@ export class UnoGame {
   private lastPlayerWhoSkipped: string | null = null // Track who last skipped to detect full cycle
   private turnCount = 0 // Track total turns for timeout mechanism
   // Enhanced state-based deadlock detection
-  private gameStateHistory: string[] = [] // Store recent game state hashes
+  private gameStateHistory: string[] = [] // Store recent game state hashes for play-loop detection
+  private resourceStateHistory: string[] = [] // Store recent resource state hashes for resource exhaustion detection
   private readonly MAX_STATE_HISTORY = 20 // Maximum number of states to track
   private readonly DEADLOCK_CYCLE_THRESHOLD = 3 // Number of times a state must repeat to indicate deadlock
 
@@ -1471,7 +1472,8 @@ export class UnoGame {
     discardPileCount: number;
     stateHistoryLength: number;
     currentStateHash: string;
-    stateCycleDetected: boolean;
+    playLoopCycleDetected: boolean;
+    resourceExhaustionCycleDetected: boolean;
   } {
     return {
       consecutiveSkips: this.consecutiveSkips,
@@ -1482,7 +1484,8 @@ export class UnoGame {
       discardPileCount: this.deck.getDiscardPile().length,
       stateHistoryLength: this.gameStateHistory.length,
       currentStateHash: this.gameStateHistory.length > 0 ? this.gameStateHistory[this.gameStateHistory.length - 1] : 'none',
-      stateCycleDetected: this.detectStateCycle(),
+      playLoopCycleDetected: this.detectPlayLoopCycle(),
+      resourceExhaustionCycleDetected: this.detectResourceExhaustionCycle(),
     }
   }
 
@@ -1517,7 +1520,8 @@ export class UnoGame {
       lastPlayerWhoSkipped: string | null;
       stateHistoryLength: number;
       currentStateHash: string;
-      stateCycleDetected: boolean;
+      playLoopCycleDetected: boolean;
+      resourceExhaustionCycleDetected: boolean;
     };
   } {
     const topCard = this.getTopCard()
@@ -1580,7 +1584,8 @@ export class UnoGame {
     console.log(`Is Deadlock: ${stats.deadlockInfo.isDeadlock}`)
     console.log(`State History Length: ${stats.deadlockInfo.stateHistoryLength}`)
     console.log(`Current State Hash: ${stats.deadlockInfo.currentStateHash}`)
-    console.log(`State Cycle Detected: ${stats.deadlockInfo.stateCycleDetected}`)
+    console.log(`Play Loop Cycle Detected: ${stats.deadlockInfo.playLoopCycleDetected}`)
+    console.log(`Resource Exhaustion Cycle Detected: ${stats.deadlockInfo.resourceExhaustionCycleDetected}`)
 
     console.log('\n=== PLAYER DETAILS ===')
     stats.playerDetails.forEach(player => {
@@ -1619,6 +1624,25 @@ export class UnoGame {
       `top:${topCardInfo}`,
       `player:${this.currentPlayerIndex}`,
       `dir:${this.direction}`,
+      `wild:${this.wildColor || 'none'}`
+    ]
+
+    return stateComponents.join('|')
+  }
+
+  // Generate a hash for resource exhaustion detection (includes deck/discard counts)
+  private generateResourceStateHash(): string {
+    const topCard = this.getTopCard()
+    const topCardInfo = topCard ? `${topCard.color}-${topCard.value}` : 'none'
+
+    // Sort hand sizes to make the hash order-independent
+    const handSizes = this.players.map(p => p.getHandSize()).sort((a, b) => a - b)
+
+    const stateComponents = [
+      `hands:${handSizes.join(',')}`,
+      `top:${topCardInfo}`,
+      `player:${this.currentPlayerIndex}`,
+      `dir:${this.direction}`,
       `wild:${this.wildColor || 'none'}`,
       `deck:${this.deck.getRemainingCount()}`,
       `discard:${this.deck.getDiscardPile().length}`
@@ -1630,20 +1654,29 @@ export class UnoGame {
   // Add current game state to history and check for cycles
   private updateGameStateHistory(): void {
     const currentStateHash = this.generateGameStateHash()
+    const currentResourceHash = this.generateResourceStateHash()
 
-    // Add to history
+    // Add to play-loop detection history (strategic state only)
     this.gameStateHistory.push(currentStateHash)
+
+    // Add to resource exhaustion detection history (includes deck/discard counts)
+    this.resourceStateHistory.push(currentResourceHash)
 
     // Keep only the most recent states
     if (this.gameStateHistory.length > this.MAX_STATE_HISTORY) {
       this.gameStateHistory = this.gameStateHistory.slice(-this.MAX_STATE_HISTORY)
     }
 
-    this.debugLog('STATE_HASH', `Current state hash: ${currentStateHash}`)
+    if (this.resourceStateHistory.length > this.MAX_STATE_HISTORY) {
+      this.resourceStateHistory = this.resourceStateHistory.slice(-this.MAX_STATE_HISTORY)
+    }
+
+    this.debugLog('STATE_HASH', `Current strategic state hash: ${currentStateHash}`)
+    this.debugLog('RESOURCE_HASH', `Current resource state hash: ${currentResourceHash}`)
   }
 
-  // Check if the current state indicates a cycle (potential deadlock)
-  private detectStateCycle(): boolean {
+  // Check if the current strategic state indicates a play-loop cycle
+  private detectPlayLoopCycle(): boolean {
     if (this.gameStateHistory.length < this.DEADLOCK_CYCLE_THRESHOLD) {
       return false
     }
@@ -1652,7 +1685,24 @@ export class UnoGame {
     const occurrences = this.gameStateHistory.filter(state => state === currentState).length
 
     if (occurrences >= this.DEADLOCK_CYCLE_THRESHOLD) {
-      this.debugLog('DEADLOCK', `State cycle detected: state ${currentState} has appeared ${occurrences} times`)
+      this.debugLog('DEADLOCK', `Play-loop cycle detected: strategic state ${currentState} has appeared ${occurrences} times`)
+      return true
+    }
+
+    return false
+  }
+
+  // Check if the current resource state indicates a resource exhaustion cycle
+  private detectResourceExhaustionCycle(): boolean {
+    if (this.resourceStateHistory.length < this.DEADLOCK_CYCLE_THRESHOLD) {
+      return false
+    }
+
+    const currentResourceState = this.resourceStateHistory[this.resourceStateHistory.length - 1]
+    const occurrences = this.resourceStateHistory.filter(state => state === currentResourceState).length
+
+    if (occurrences >= this.DEADLOCK_CYCLE_THRESHOLD) {
+      this.debugLog('DEADLOCK', `Resource exhaustion cycle detected: resource state ${currentResourceState} has appeared ${occurrences} times`)
       return true
     }
 
@@ -1663,11 +1713,19 @@ export class UnoGame {
   private isDeadlock(): boolean {
     this.debugLog('DEADLOCK', 'Checking for deadlock conditions...')
 
-    // NEW: Enhanced state-based cycle detection
-    // This catches the scenario described in the bug report where players cycle through action cards
-    if (this.detectStateCycle()) {
-      this.debugLog('DEADLOCK', 'DEADLOCK DETECTED: State cycle detected - game is stuck in a repeating pattern')
-      this.log("DEADLOCK DETECTED: State cycle detected - game is stuck in a repeating pattern")
+    // ENHANCEMENT: Check for play-loop cycles (strategic state only)
+    // This catches scenarios where players are trading the same cards back and forth
+    if (this.detectPlayLoopCycle()) {
+      this.debugLog('DEADLOCK', 'DEADLOCK DETECTED: Play-loop cycle detected - players are stuck in a strategic loop')
+      this.log("DEADLOCK DETECTED: Play-loop cycle detected - players are stuck in a strategic loop")
+      return true
+    }
+
+    // ENHANCEMENT: Check for resource exhaustion cycles (includes deck/discard counts)
+    // This catches scenarios where the game is stuck due to resource constraints
+    if (this.detectResourceExhaustionCycle()) {
+      this.debugLog('DEADLOCK', 'DEADLOCK DETECTED: Resource exhaustion cycle detected - game is stuck due to resource constraints')
+      this.log("DEADLOCK DETECTED: Resource exhaustion cycle detected - game is stuck due to resource constraints")
       return true
     }
 
@@ -1800,6 +1858,7 @@ export class UnoGame {
 
     // Reset state history for enhanced deadlock detection
     this.gameStateHistory = []
+    this.resourceStateHistory = []
 
     this.log("Deadlock resolved with force reshuffle - game continues")
   }
