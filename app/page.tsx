@@ -105,6 +105,7 @@ function UnoGameInner() {
   const [showMainMenu, setShowMainMenu] = useState(true)
   const [aiThinking, setAiThinking] = useState<{ playerName: string; startTime: number } | null>(null)
   const [colorConfirmation, setColorConfirmation] = useState<{ color: string; playerName: string; duration: number } | null>(null)
+  const [isGamePaused, setIsGamePaused] = useState(false)
   const { gameSettings } = useSettings()
 
   // Background music state
@@ -371,6 +372,15 @@ function UnoGameInner() {
           } else {
             backgroundMusicRef.current.play()
             setIsMusicPlaying(true)
+          }
+        }
+      } else if (key === ' ' || key === 'p') {
+        // Pause/Resume game (spacebar or 'p' key)
+        if (gameEngine && !gameEngine.isGameOver()) {
+          if (isGamePaused) {
+            resumeGame()
+          } else {
+            pauseGame()
           }
         }
       }
@@ -1028,11 +1038,11 @@ function UnoGameInner() {
   }
 
   useEffect(() => {
-    if (!gameEngine || gameEngine.isGameOver()) return
+    if (!gameEngine || gameEngine.isGameOver() || isGamePaused) return
 
     const currentPlayer = gameEngine.getCurrentPlayer()
     console.log("[DEBUG] Turn detection - Current player:", currentPlayer.name, "ID:", currentPlayer.id)
-    console.log("[DEBUG] Turn detection - playDelay:", playDelay, "isAITurnAnimating:", isAITurnAnimating)
+    console.log("[DEBUG] Turn detection - playDelay:", playDelay, "isAITurnAnimating:", isAITurnAnimating, "isPaused:", isGamePaused)
 
     setCurrentPlayerId(currentPlayer.id)
 
@@ -1051,11 +1061,37 @@ function UnoGameInner() {
       console.log("[DEBUG] AI turn blocked - already animating for:", currentPlayer.name)
     } else if (!isHumanTurn && playDelay) {
       console.log("[DEBUG] AI turn blocked - play delay active")
+    } else if (isGamePaused) {
+      console.log("[DEBUG] AI turn blocked - game is paused")
     }
-  }, [currentPlayerId, playDelay, gameEngine, isAITurnAnimating])
+  }, [currentPlayerId, playDelay, gameEngine, isAITurnAnimating, isGamePaused])
+
+  // Pause and resume functions
+  const pauseGame = () => {
+    if (gameEngine && !gameEngine.isGameOver()) {
+      gameEngine.pause()
+      setIsGamePaused(true)
+      console.log("Game paused")
+    }
+  }
+
+  const resumeGame = () => {
+    if (gameEngine && gameEngine.isGamePaused()) {
+      gameEngine.resume()
+      setIsGamePaused(false)
+      console.log("Game resumed")
+    }
+  }
+
+  // Handle pause state changes
+  useEffect(() => {
+    if (gameEngine) {
+      setIsGamePaused(gameEngine.isGamePaused())
+    }
+  }, [gameEngine])
 
   const playAITurn = () => {
-    if (!gameEngine || isAITurnAnimating) return
+    if (!gameEngine || isAITurnAnimating || isGamePaused) return
 
     const currentPlayer = gameEngine.getCurrentPlayer()
     console.log("Playing AI turn for:", currentPlayer.name)
@@ -1853,7 +1889,7 @@ function UnoGameInner() {
 
       {/* Initial card distribution overlay */}
       {isDistributing && (
-        <div className="absolute inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+        <div className="absolute inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[9994]">
           <Card className="p-8 bg-black/70 text-white text-center border-2 border-yellow-400/50">
             <div className="flex flex-col items-center space-y-4">
               <div className="relative">
@@ -1996,7 +2032,7 @@ function UnoGameInner() {
       })}
 
       {gameEngine?.isGameOver() && (
-        <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-50">
+        <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-[9998]">
           <Card className="p-8 bg-gradient-to-r from-yellow-400 to-orange-500 text-black text-center shadow-2xl">
             <h2 className="text-4xl font-bold mb-4 font-gaming">🎉 Game Over! 🎉</h2>
             <p className="text-2xl font-semibold mb-6 font-gaming-secondary">{gameEngine.getRoundWinner()?.name || 'Unknown'} {(gameEngine.getRoundWinner()?.name === 'You' || gameEngine.getRoundWinner()?.name === 'Unknown') ? 'Win!' : 'Wins!'}</p>
@@ -2012,9 +2048,52 @@ function UnoGameInner() {
         </div>
       )}
 
+      {/* Pause Overlay */}
+      {isGamePaused && (
+        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[9999]">
+          <Card className="p-8 bg-gradient-to-r from-blue-600 to-purple-600 text-white text-center shadow-2xl border-2 border-white/20">
+            <div className="flex flex-col items-center space-y-6">
+              <div className="relative">
+                <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center animate-pulse">
+                  <div className="w-8 h-8 flex items-center justify-center">
+                    <div className="w-2 h-8 bg-white mr-1"></div>
+                    <div className="w-2 h-8 bg-white"></div>
+                  </div>
+                </div>
+                <div className="absolute -top-2 -right-2 w-6 h-6 bg-yellow-400 rounded-full flex items-center justify-center animate-bounce">
+                  <span className="text-black text-xs font-bold">⏸️</span>
+                </div>
+              </div>
+              <div>
+                <h2 className="text-3xl font-bold mb-2 font-gaming">Game Paused</h2>
+                <p className="text-lg opacity-90 font-gaming-secondary">Take a break or review the game state</p>
+              </div>
+              <div className="flex gap-4">
+                <Button
+                  onClick={resumeGame}
+                  className="bg-green-600 text-white hover:bg-green-500 font-gaming-secondary px-6 py-2"
+                >
+                  Resume Game
+                </Button>
+                <Button
+                  onClick={returnToMainMenu}
+                  variant="outline"
+                  className="bg-white/10 border-white/30 text-white hover:bg-white/20 font-gaming-secondary px-6 py-2"
+                >
+                  Main Menu
+                </Button>
+              </div>
+              <div className="text-sm opacity-70 mt-4">
+                Press <kbd className="px-2 py-1 bg-white/20 rounded text-xs">Space</kbd> or <kbd className="px-2 py-1 bg-white/20 rounded text-xs">P</kbd> to resume
+              </div>
+            </div>
+          </Card>
+        </div>
+      )}
+
       {/* Action Card Confirmation Dialog */}
       {showActionConfirm && (
-        <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-50">
+        <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-[9997]">
           <Card className="p-6 bg-gradient-to-r from-purple-600 to-blue-600 text-white text-center shadow-2xl max-w-md">
             <h3 className="text-xl font-bold mb-4">Confirm Action Card</h3>
             <div className="mb-4">
@@ -2223,6 +2302,37 @@ function UnoGameInner() {
           </div>
         </div>
 
+        {/* Pause/Resume Game Button */}
+        {!gameEngine?.isGameOver() && (
+          <Button
+            size="sm"
+            variant="outline"
+            className={`flex items-center gap-1 transition-all duration-300 ${isGamePaused
+              ? "bg-yellow-500/20 text-yellow-300 border-yellow-500 hover:bg-yellow-500/30 shadow-lg shadow-yellow-400/20"
+              : "bg-black/50 text-white border-white/20 hover:bg-white/10"
+              }`}
+            onClick={isGamePaused ? resumeGame : pauseGame}
+            title={isGamePaused ? "Resume Game" : "Pause Game"}
+          >
+            {isGamePaused ? (
+              <>
+                <div className="w-4 h-4 flex items-center justify-center">
+                  <div className="w-0 h-0 border-l-[6px] border-l-white border-t-[4px] border-t-transparent border-b-[4px] border-b-transparent"></div>
+                </div>
+                Resume
+              </>
+            ) : (
+              <>
+                <div className="w-4 h-4 flex items-center justify-center">
+                  <div className="w-1 h-4 bg-white mr-1"></div>
+                  <div className="w-1 h-4 bg-white"></div>
+                </div>
+                Pause
+              </>
+            )}
+          </Button>
+        )}
+
         {/* Developer Mode Toggle */}
         <Button
           size="sm"
@@ -2259,6 +2369,9 @@ function UnoGameInner() {
           </div>
           <div className="text-blue-400">
             M - Toggle Music
+          </div>
+          <div className="text-purple-400">
+            P/Space - Pause/Resume
           </div>
         </div>
 
@@ -2575,6 +2688,7 @@ function UnoGameInner() {
                     !players[0]?.isActive ||
                     gameEngine?.getDeckCount() <= 0 ||
                     playDelay ||
+                    isGamePaused ||
                     (players[0]?.cards.some(card => card.isPlayable) || false)
                   }
                   title={
@@ -2584,9 +2698,11 @@ function UnoGameInner() {
                         ? "No cards left to draw"
                         : playDelay
                           ? "Please wait"
-                          : (players[0]?.cards.some(card => card.isPlayable) || false)
-                            ? "You have playable cards - play them first!"
-                            : "Draw a card (Press D)"
+                          : isGamePaused
+                            ? "Game is paused"
+                            : (players[0]?.cards.some(card => card.isPlayable) || false)
+                              ? "You have playable cards - play them first!"
+                              : "Draw a card (Press D)"
                   }
                 >
                   <Plus className="w-5 h-5 text-white drop-shadow-2xl stroke-2" />
@@ -2597,13 +2713,15 @@ function UnoGameInner() {
                 <Button
                   className="absolute right-[-90px] h-14 w-24 px-3 py-2 justify-center bg-red-600 hover:bg-red-700 active:bg-red-800 text-white font-bold shadow-lg hover:shadow-xl flex-row items-center gap-1 transition-all duration-300 transform hover:scale-102 disabled:hover:scale-100 rounded-full border-2 border-white/20 disabled:opacity-50 disabled:transform-none z-10"
                   onClick={callUno}
-                  disabled={!players[0] || players[0].cardCount !== 1}
+                  disabled={!players[0] || players[0].cardCount !== 1 || isGamePaused}
                   title={
                     !players[0]
                       ? "No player data"
                       : players[0].cardCount !== 1
                         ? `Call UNO when you have exactly 1 card (you have ${players[0].cardCount})`
-                        : "Call UNO! (Press U)"
+                        : isGamePaused
+                          ? "Game is paused"
+                          : "Call UNO! (Press U)"
                   }
                 >
                   <Zap className="w-5 h-5 text-white drop-shadow-2xl stroke-2" />
@@ -2671,7 +2789,7 @@ function UnoGameInner() {
               <div
                 key={card.id}
                 data-card-id={card.id}
-                className={`transition-all duration-300 transform hover:scale-110 hover:-translate-y-4 ${card.isPlayable && players[0]?.isActive && !playDelay && uiSettings.showPlayableCards
+                className={`transition-all duration-300 transform hover:scale-110 hover:-translate-y-4 ${card.isPlayable && players[0]?.isActive && !playDelay && !isGamePaused && uiSettings.showPlayableCards
                   ? "cursor-pointer hover:shadow-2xl hover:shadow-green-400/50 hover:rotate-0"
                   : card.isPlayable && uiSettings.showPlayableCards
                     ? "cursor-pointer hover:scale-105"
@@ -2679,10 +2797,10 @@ function UnoGameInner() {
                   }`}
                 style={{
                   transform: `rotate(${(index - 3) * 3}deg) translateY(${index % 2 === 0 ? '0px' : '-10px'})`,
-                  zIndex: card.isPlayable && players[0]?.isActive && !playDelay ? 10 : 1
+                  zIndex: card.isPlayable && players[0]?.isActive && !playDelay && !isGamePaused ? 10 : 1
                 }}
                 onClick={() => {
-                  if (card.isPlayable && players[0]?.isActive && !playDelay) {
+                  if (card.isPlayable && players[0]?.isActive && !playDelay && !isGamePaused) {
                     // Show confirmation for action cards if enabled
                     if (uiSettings.confirmActionCards && (card.value === "Skip" || card.value === "Draw Two" || card.value === "Reverse" || card.color === "wild")) {
                       setShowActionConfirm({
@@ -2702,8 +2820,8 @@ function UnoGameInner() {
                   color={card.color}
                   value={card.value}
                   size="large"
-                  isPlayable={card.isPlayable && players[0]?.isActive && !playDelay && uiSettings.showPlayableCards}
-                  className={`uno-card-enhanced ${card.isPlayable && players[0]?.isActive && !playDelay && uiSettings.showPlayableCards ? "uno-card-playable" : ""}`}
+                  isPlayable={card.isPlayable && players[0]?.isActive && !playDelay && !isGamePaused && uiSettings.showPlayableCards}
+                  className={`uno-card-enhanced ${card.isPlayable && players[0]?.isActive && !playDelay && !isGamePaused && uiSettings.showPlayableCards ? "uno-card-playable" : ""}`}
                 />
               </div>
             ))}
@@ -2736,7 +2854,7 @@ function UnoGameInner() {
                     variant="outline"
                     className="bg-yellow-500/20 text-yellow-300 border-yellow-500 hover:bg-yellow-500/30 text-xs hover:shadow-lg hover:shadow-yellow-400/30 transition-all duration-300"
                     onClick={() => challengeUno(`player_${player.id}`)}
-                    disabled={playDelay}
+                    disabled={playDelay || isGamePaused}
                   >
                     Challenge {player.name} UNO
                   </Button>
@@ -2747,7 +2865,7 @@ function UnoGameInner() {
                     variant="outline"
                     className="bg-purple-500/20 text-purple-300 border-purple-500 hover:bg-purple-500/30 text-xs hover:shadow-lg hover:shadow-purple-400/30 transition-all duration-300"
                     onClick={() => challengeWildDrawFour(`player_${player.id}`)}
-                    disabled={playDelay}
+                    disabled={playDelay || isGamePaused}
                   >
                     Challenge {player.name} +4
                   </Button>
@@ -2761,7 +2879,7 @@ function UnoGameInner() {
 
 
       {/* View Logs Button - Top Right Corner */}
-      <div className="absolute top-8 right-8 z-40">
+      <div className="absolute top-8 right-8 z-[9991]">
         <Button
           size="sm"
           variant="outline"
@@ -2784,7 +2902,7 @@ function UnoGameInner() {
 
       {/* Discard Pile Viewer */}
       {isDiscardPileVisible && gameEngine?.getRules().showDiscardPile && (
-        <div className="absolute bottom-4 right-4 w-80 h-96 bg-black/70 backdrop-blur-lg rounded-2xl border border-white/20 shadow-2xl p-4 z-50 overflow-y-auto">
+        <div className="absolute bottom-4 right-4 w-80 h-96 bg-black/70 backdrop-blur-lg rounded-2xl border border-white/20 shadow-2xl p-4 z-[9993] overflow-y-auto">
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-white font-bold text-lg flex items-center gap-2">
               <Shuffle className="w-5 h-5" />
@@ -2818,7 +2936,7 @@ function UnoGameInner() {
 
       {/* Debug Panel - Only visible in developer mode */}
       {isDeveloperMode && (
-        <div className="fixed top-4 right-4 bg-black/80 text-white p-4 rounded-lg z-50">
+        <div className="fixed top-4 right-4 bg-black/80 text-white p-4 rounded-lg z-[9992]">
           <h3 className="font-bold mb-2">Debug Panel</h3>
           <div className="space-y-2 text-xs">
             <div>Game Engine: {gameEngine ? "Active" : "Null"}</div>
@@ -2828,6 +2946,7 @@ function UnoGameInner() {
             <div>AI Thinking: {aiThinking ? `${aiThinking.playerName} (${Date.now() - aiThinking.startTime}ms)` : "None"}</div>
             <div>AI Turn Animating: {isAITurnAnimating ? "Yes" : "No"}</div>
             <div>Play Delay: {playDelay ? "Yes" : "No"}</div>
+            <div>Game Paused: {isGamePaused ? "Yes" : "No"}</div>
           </div>
           <Button
             size="sm"

@@ -47,7 +47,7 @@ export function ColorPicker({ isVisible, onColorSelect, onClose }: ColorPickerPr
     ] as const
 
     return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 animate-in fade-in duration-300">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[9995] animate-in fade-in duration-300">
             {/* Animated background particles */}
             <div className="absolute inset-0 overflow-hidden pointer-events-none">
                 {Array.from({ length: 20 }, (_, i) => (

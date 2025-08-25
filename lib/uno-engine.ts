@@ -839,7 +839,7 @@ export class UnoPlayer {
 }
 
 export type GameDirection = "clockwise" | "counterclockwise"
-export type GamePhase = "playing" | "waiting" | "drawing" | "choosing_color" | "choosing_player" | "game_over"
+export type GamePhase = "playing" | "waiting" | "drawing" | "choosing_color" | "choosing_player" | "game_over" | "paused"
 
 export class UnoGame {
   private players: UnoPlayer[] = []
@@ -872,6 +872,9 @@ export class UnoGame {
   // Enhanced AI Strategy System
   private stateTracker: GameStateTracker
   private enhancedAIStrategy: ExpertAIStrategy | null = null
+  // Pause functionality
+  private isPaused: boolean = false
+  private previousPhase: GamePhase | null = null
 
   constructor(playerNames: string[], humanPlayerIndex = 0, rules: Partial<UnoRules> = {}, events: UnoGameEvents = {}, skipInitialDeal = false) {
     this.rules = { ...DEFAULT_RULES, ...rules }
@@ -1991,6 +1994,40 @@ export class UnoGame {
     return { ...this.rules }
   }
 
+  // Pause functionality
+  pause(): void {
+    if (this.phase === "game_over" || this.isPaused) return
+
+    this.previousPhase = this.phase
+    this.phase = "paused"
+    this.isPaused = true
+    this.log("Game paused")
+  }
+
+  resume(): void {
+    if (!this.isPaused) return
+
+    if (this.previousPhase) {
+      this.phase = this.previousPhase
+      this.previousPhase = null
+    } else {
+      this.phase = "playing"
+    }
+    this.isPaused = false
+    this.log("Game resumed")
+  }
+
+  isGamePaused(): boolean {
+    return this.isPaused
+  }
+
+  getPauseState(): { isPaused: boolean; previousPhase: GamePhase | null } {
+    return {
+      isPaused: this.isPaused,
+      previousPhase: this.previousPhase
+    }
+  }
+
   // Get deadlock detection information for debugging
   getDeadlockInfo(): {
     consecutiveSkips: number;
@@ -2560,9 +2597,9 @@ export class UnoGame {
       this.phase,
     )
 
-    if (currentPlayer.isHuman || this.phase !== "playing") {
-      this.debugLog('AI', `AI turn blocked - isHuman: ${currentPlayer.isHuman}, phase: ${this.phase}`)
-      this.log("playAITurn early return - isHuman:", currentPlayer.isHuman, "phase:", this.phase)
+    if (currentPlayer.isHuman || this.phase !== "playing" || this.isPaused) {
+      this.debugLog('AI', `AI turn blocked - isHuman: ${currentPlayer.isHuman}, phase: ${this.phase}, paused: ${this.isPaused}`)
+      this.log("playAITurn early return - isHuman:", currentPlayer.isHuman, "phase:", this.phase, "paused:", this.isPaused)
       return false
     }
 
@@ -2583,7 +2620,7 @@ export class UnoGame {
     const currentPlayer = this.getCurrentPlayer()
     const topCard = this.getTopCard()
 
-    if (!topCard) return null
+    if (!topCard || this.isPaused) return null
 
     // Try to play a card
     const cardToPlay = this.chooseAICard(currentPlayer, topCard)
