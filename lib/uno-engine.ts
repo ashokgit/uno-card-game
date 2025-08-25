@@ -182,13 +182,22 @@ export class UnoDeck {
     return card || null
   }
 
-  drawCards(count: number): UnoCard[] {
+  drawCards(count: number): { drawnCards: UnoCard[], isExhausted: boolean } {
     const drawnCards: UnoCard[] = []
+    let isExhausted = false
+
     for (let i = 0; i < count; i++) {
       const card = this.drawCard()
-      if (card) drawnCards.push(card)
+      if (card) {
+        drawnCards.push(card)
+      } else {
+        // Deck was exhausted during the draw
+        isExhausted = true
+        break
+      }
     }
-    return drawnCards
+
+    return { drawnCards, isExhausted }
   }
 
   public reshuffleDiscardPile(): void {
@@ -607,8 +616,8 @@ export class UnoGame {
       if (player.hasOneCard() && !player.getHasCalledUno()) {
         // Auto-penalty if UNO not called within time window
         this.log("UNO challenge timer expired - applying penalty to", player.name)
-        const penaltyCards = this.deck.drawCards(2)
-        player.addCards(penaltyCards)
+        const result = this.deck.drawCards(2)
+        player.addCards(result.drawnCards)
         player.resetUnoCall()
       }
       this.unoChallengeTimers.delete(player.id)
@@ -1141,8 +1150,8 @@ export class UnoGame {
     // Check if target player has one card and didn't call UNO
     if (targetPlayer.shouldBePenalizedForUno()) {
       // Target player gets penalty (draw 2 cards)
-      const penaltyCards = this.deck.drawCards(2)
-      targetPlayer.addCards(penaltyCards)
+      const result = this.deck.drawCards(2)
+      targetPlayer.addCards(result.drawnCards)
       targetPlayer.resetUnoCall()
 
       // Cancel the timer to prevent double penalty
@@ -1174,8 +1183,8 @@ export class UnoGame {
     // Check if target player called UNO but has more than one card
     if (targetPlayer.getHasCalledUno() && !targetPlayer.hasOneCard()) {
       // Target player gets penalty (draw 2 cards) for false UNO call
-      const penaltyCards = this.deck.drawCards(2)
-      targetPlayer.addCards(penaltyCards)
+      const result = this.deck.drawCards(2)
+      targetPlayer.addCards(result.drawnCards)
       targetPlayer.resetUnoCall()
 
       this.log("False UNO challenge successful - penalty applied to", targetPlayer.name)
@@ -1227,8 +1236,8 @@ export class UnoGame {
 
     if (hasMatchingColor) {
       // Challenge succeeds: target player penalized
-      const penalty = this.deck.drawCards(4)
-      targetPlayer.addCards(penalty)
+      const result = this.deck.drawCards(4)
+      targetPlayer.addCards(result.drawnCards)
       // Clear the draw penalty since the challenge resolved it
       this.drawPenalty = 0
       // Reset skipNext so the challenger can play next (they successfully challenged)
@@ -1238,8 +1247,8 @@ export class UnoGame {
       return true
     } else {
       // Challenge fails: challenger penalized
-      const penalty = this.deck.drawCards(6)
-      challenger.addCards(penalty)
+      const result = this.deck.drawCards(6)
+      challenger.addCards(result.drawnCards)
       // Clear the draw penalty since the 6-card penalty fulfills the original 4-card penalty
       this.drawPenalty = 0
       // Keep skipNext = true so the challenger's turn is skipped (they failed the challenge)
@@ -1320,10 +1329,25 @@ export class UnoGame {
     // Apply pending draw penalty
     if (this.drawPenalty > 0) {
       this.debugLog('TURN', `${current.name} must draw ${this.drawPenalty} cards as penalty`)
-      const drawn = this.deck.drawCards(this.drawPenalty)
-      current.addCards(drawn)
-      this.log(`${current.name} drew ${this.drawPenalty} as penalty`)
-      this.debugLog('TURN', `Penalty cards drawn: ${drawn.map(c => `${c.color} ${c.value}`).join(', ')}`)
+      const result = this.deck.drawCards(this.drawPenalty)
+      current.addCards(result.drawnCards)
+      this.log(`${current.name} drew ${result.drawnCards.length} as penalty (requested: ${this.drawPenalty})`)
+      this.debugLog('TURN', `Penalty cards drawn: ${result.drawnCards.map(c => `${c.color} ${c.value}`).join(', ')}`)
+
+      // Check if deck was exhausted during penalty
+      if (result.isExhausted && result.drawnCards.length < this.drawPenalty) {
+        this.debugLog('DEADLOCK', `Deck exhausted during penalty draw. Drew ${result.drawnCards.length}/${this.drawPenalty} cards.`)
+        this.log(`Deck exhausted during penalty - resolving deadlock`)
+
+        // Resolve deadlock immediately since no more cards can be drawn
+        if (this.rules.deadlockResolution === 'force_reshuffle') {
+          this.resolveDeadlockWithReshuffle()
+        } else {
+          this.resolveDeadlock()
+        }
+        return // Exit early to prevent further processing
+      }
+
       this.drawPenalty = 0
     }
 
