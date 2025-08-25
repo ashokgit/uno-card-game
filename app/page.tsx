@@ -1935,7 +1935,7 @@ function UnoGameInner() {
         <div className="fixed inset-0 flex items-center justify-center z-[10000] pointer-events-none">
           {/* Background blur */}
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm"></div>
-          
+
           {/* Game Paused Indicator */}
           <div className="absolute top-8 left-1/2 transform -translate-x-1/2 z-[10001]">
             <div className="bg-yellow-500/90 text-black px-6 py-3 rounded-full shadow-2xl border-2 border-yellow-300 animate-pulse">
