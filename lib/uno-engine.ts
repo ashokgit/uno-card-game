@@ -205,18 +205,9 @@ export class UnoDeck {
       console.log(`[DECK] Attempting reshuffle - deck: ${this.cards.length} cards, discard: ${this.discardPile.length} cards`)
     }
 
-    // FIX: Allow reshuffle even with 1 card if deck is empty (prevents deadlock)
-    if (this.discardPile.length === 0) {
+    if (this.discardPile.length <= 1) {
       if (this.debugMode) {
-        console.log(`[DECK] Cannot reshuffle - discard pile is empty`)
-      }
-      return
-    }
-
-    if (this.discardPile.length === 1 && this.cards.length > 0) {
-      // Only prevent reshuffle if we have cards in deck and only 1 in discard
-      if (this.debugMode) {
-        console.log(`[DECK] Cannot reshuffle - discard pile has only 1 card and deck has cards`)
+        console.log(`[DECK] Cannot reshuffle - discard pile has ${this.discardPile.length} cards.`)
       }
       return
     }
