@@ -251,11 +251,11 @@ function UnoGameInner() {
 
       const key = event.key.toLowerCase()
 
-      if (key === 'd' && players[0]?.isActive && !playDelay &&
+      if (key === 'd' && players[0]?.isActive && !playDelay && !isGamePaused &&
         gameEngine && gameEngine.getDeckCount() > 0 &&
         !(players[0]?.cards.some(card => card.isPlayable) || false)) {
         drawCard()
-      } else if (key === 'u' && players[0] && players[0].cardCount === 1) {
+      } else if (key === 'u' && players[0] && players[0].cardCount === 1 && !isGamePaused) {
         callUno()
       } else if (key === 'm') {
         // Toggle background music
@@ -913,7 +913,7 @@ function UnoGameInner() {
   }
 
   const challengeWildDrawFour = (targetPlayerId: string) => {
-    if (!gameEngine) return
+    if (!gameEngine || isGamePaused) return
     const success = gameEngine.challengeWildDrawFour("player_0", targetPlayerId)
     if (success) {
       playSound("special")
@@ -937,7 +937,7 @@ function UnoGameInner() {
     const isHumanTurn = currentPlayer.name === "You" || currentPlayer.id === "player_0"
     console.log("[DEBUG] Turn detection - isHumanTurn:", isHumanTurn)
 
-    if (!isHumanTurn && !playDelay && !isAITurnAnimating) {
+    if (!isHumanTurn && !playDelay && !isAITurnAnimating && !isGamePaused) {
       console.log("[v0] AI turn starting for:", currentPlayer.name)
       setAiThinking({ playerName: currentPlayer.name, startTime: Date.now() })
       const timer = setTimeout(() => {
@@ -949,6 +949,8 @@ function UnoGameInner() {
       console.log("[DEBUG] AI turn blocked - already animating for:", currentPlayer.name)
     } else if (!isHumanTurn && playDelay) {
       console.log("[DEBUG] AI turn blocked - play delay active")
+    } else if (!isHumanTurn && isGamePaused) {
+      console.log("[DEBUG] AI turn blocked - game paused for color confirmation")
     }
   }, [currentPlayerId, playDelay, gameEngine, isAITurnAnimating])
 
@@ -1933,6 +1935,16 @@ function UnoGameInner() {
         <div className="fixed inset-0 flex items-center justify-center z-[10000] pointer-events-none">
           {/* Background blur */}
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm"></div>
+          
+          {/* Game Paused Indicator */}
+          <div className="absolute top-8 left-1/2 transform -translate-x-1/2 z-[10001]">
+            <div className="bg-yellow-500/90 text-black px-6 py-3 rounded-full shadow-2xl border-2 border-yellow-300 animate-pulse">
+              <div className="flex items-center gap-2 font-bold text-lg">
+                <div className="w-3 h-3 bg-black rounded-full animate-pulse"></div>
+                GAME PAUSED - Color Selection
+              </div>
+            </div>
+          </div>
 
           {/* Color confirmation card */}
           <div className={`
@@ -2423,6 +2435,7 @@ function UnoGameInner() {
                     !players[0]?.isActive ||
                     gameEngine?.getDeckCount() <= 0 ||
                     playDelay ||
+                    isGamePaused ||
                     (players[0]?.cards.some(card => card.isPlayable) || false)
                   }
                   title={
@@ -2432,9 +2445,11 @@ function UnoGameInner() {
                         ? "No cards left to draw"
                         : playDelay
                           ? "Please wait"
-                          : (players[0]?.cards.some(card => card.isPlayable) || false)
-                            ? "You have playable cards - play them first!"
-                            : "Draw a card (Press D)"
+                          : isGamePaused
+                            ? "Game paused - color selection in progress"
+                            : (players[0]?.cards.some(card => card.isPlayable) || false)
+                              ? "You have playable cards - play them first!"
+                              : "Draw a card (Press D)"
                   }
                 >
                   <Plus className="w-5 h-5 text-white drop-shadow-2xl stroke-2" />
@@ -2445,7 +2460,7 @@ function UnoGameInner() {
                 <Button
                   className="absolute right-[-90px] h-14 w-24 px-3 py-2 justify-center bg-red-600 hover:bg-red-700 active:bg-red-800 text-white font-bold shadow-lg hover:shadow-xl flex-row items-center gap-1 transition-all duration-300 transform hover:scale-102 disabled:hover:scale-100 rounded-full border-2 border-white/20 disabled:opacity-50 disabled:transform-none z-10"
                   onClick={callUno}
-                  disabled={!players[0] || players[0].cardCount !== 1}
+                  disabled={!players[0] || players[0].cardCount !== 1 || isGamePaused}
                   title={
                     !players[0]
                       ? "No player data"
@@ -2519,18 +2534,20 @@ function UnoGameInner() {
               <div
                 key={card.id}
                 data-card-id={card.id}
-                className={`transition-all duration-300 transform hover:scale-110 hover:-translate-y-4 ${card.isPlayable && players[0]?.isActive && !playDelay && uiSettings.showPlayableCards
+                className={`transition-all duration-300 transform hover:scale-110 hover:-translate-y-4 ${card.isPlayable && players[0]?.isActive && !playDelay && !isGamePaused && uiSettings.showPlayableCards
                   ? "cursor-pointer hover:shadow-2xl hover:shadow-green-400/50 hover:rotate-0"
-                  : card.isPlayable && uiSettings.showPlayableCards
+                  : card.isPlayable && uiSettings.showPlayableCards && !isGamePaused
                     ? "cursor-pointer hover:scale-105"
-                    : "opacity-60"
+                    : isGamePaused
+                      ? "opacity-40 cursor-not-allowed"
+                      : "opacity-60"
                   }`}
                 style={{
                   transform: `rotate(${(index - 3) * 3}deg) translateY(${index % 2 === 0 ? '0px' : '-10px'})`,
                   zIndex: card.isPlayable && players[0]?.isActive && !playDelay ? 10 : 1
                 }}
                 onClick={() => {
-                  if (card.isPlayable && players[0]?.isActive && !playDelay) {
+                  if (card.isPlayable && players[0]?.isActive && !playDelay && !isGamePaused) {
                     // Show confirmation for action cards if enabled
                     if (uiSettings.confirmActionCards && (card.value === "Skip" || card.value === "Draw Two" || card.value === "Reverse" || card.color === "wild")) {
                       setShowActionConfirm({
@@ -2584,7 +2601,7 @@ function UnoGameInner() {
                     variant="outline"
                     className="bg-yellow-500/20 text-yellow-300 border-yellow-500 hover:bg-yellow-500/30 text-xs hover:shadow-lg hover:shadow-yellow-400/30 transition-all duration-300"
                     onClick={() => challengeUno(`player_${player.id}`)}
-                    disabled={playDelay}
+                    disabled={playDelay || isGamePaused}
                   >
                     Challenge {player.name} UNO
                   </Button>
@@ -2595,7 +2612,7 @@ function UnoGameInner() {
                     variant="outline"
                     className="bg-purple-500/20 text-purple-300 border-purple-500 hover:bg-purple-500/30 text-xs hover:shadow-lg hover:shadow-purple-400/30 transition-all duration-300"
                     onClick={() => challengeWildDrawFour(`player_${player.id}`)}
-                    disabled={playDelay}
+                    disabled={playDelay || isGamePaused}
                   >
                     Challenge {player.name} +4
                   </Button>
