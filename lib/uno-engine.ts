@@ -673,16 +673,19 @@ export class UnoGame {
 
     const { player, card, isJumpIn } = validation
 
+    // Capture the active color BEFORE any mutations for Wild Draw Four challenges
+    const activeColorBeforePlay = this.wildColor || this.getTopCard()!.color
+
     // Remove card from player's hand and play it
     const playedCard = player!.removeCard(cardId)
     if (!playedCard) return false
 
     this.deck.playCard(playedCard)
 
-    // Store the current active color ONLY when playing a Wild Draw Four
+    // Store the active color ONLY when playing a Wild Draw Four
     // This ensures previousActiveColor is accurate for challenge validation
     if (playedCard.value === "Wild Draw Four") {
-      this.previousActiveColor = this.wildColor || this.getTopCard()!.color
+      this.previousActiveColor = activeColorBeforePlay
     }
 
     // Clear wild color BEFORE applying effects to ensure previousActiveColor is accurate
@@ -1034,14 +1037,18 @@ export class UnoGame {
       if (drawnCardPlayable && this.rules.mustPlayIfDrawable) {
         // Auto-play the drawn card if rule is enabled
         this.log("Auto-playing drawn card due to mustPlayIfDrawable rule")
+
+        // Capture the active color BEFORE any mutations for Wild Draw Four challenges
+        const activeColorBeforePlay = this.wildColor || this.getTopCard()!.color
+
         const playedCard = player.removeCard(card.id)
         if (playedCard) {
           this.deck.playCard(playedCard)
 
-          // Store the current active color ONLY when playing a Wild Draw Four
+          // Store the active color ONLY when playing a Wild Draw Four
           // This ensures previousActiveColor is accurate for challenge validation
           if (playedCard.value === "Wild Draw Four") {
-            this.previousActiveColor = this.wildColor || this.getTopCard()!.color
+            this.previousActiveColor = activeColorBeforePlay
           }
 
           // Emit card drawn and auto-played event
@@ -1432,6 +1439,10 @@ export class UnoGame {
 
   getWildColor(): UnoColor | null {
     return this.wildColor
+  }
+
+  getPreviousActiveColor(): UnoColor | null {
+    return this.previousActiveColor
   }
 
   getPhase(): GamePhase {
