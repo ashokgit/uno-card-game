@@ -30,6 +30,10 @@ export interface UnoRules {
   enableSwapHands: boolean   // Enable hand swapping house rule
   showDiscardPile: boolean   // If true, expose and allow viewing the full discard pile
   deadlockResolution: 'end_round' | 'force_reshuffle'  // How to handle deadlock scenarios
+  wildCardSkip: number       // Number of players to skip when Wild card is played (1 = next player, 2 = skip next player, default = 2)
+  unoChallengeWindow: number // Time window in milliseconds to challenge UNO calls (default = 2000)
+  maxGameTime: number        // Maximum game time in minutes before auto-ending (0 = no limit, default = 0)
+  enableUnoChallenges: boolean // Whether to allow UNO challenges (default = true)
 }
 
 export const DEFAULT_RULES: UnoRules = {
@@ -45,6 +49,10 @@ export const DEFAULT_RULES: UnoRules = {
   enableSwapHands: false,
   showDiscardPile: false,  // Official: only top card is relevant, but can enable for full visibility
   deadlockResolution: 'end_round',  // Default: end round when deadlock detected
+  wildCardSkip: 2,  // Default: skip next player (standard UNO behavior)
+  unoChallengeWindow: 2000,  // Default: 2 seconds to challenge UNO calls
+  maxGameTime: 0,  // Default: no time limit
+  enableUnoChallenges: true,  // Default: allow UNO challenges
 }
 
 // Event hooks for UI and multiplayer integration
@@ -844,9 +852,10 @@ export class UnoGame {
   private winner: UnoPlayer | null = null
   private roundWinner: UnoPlayer | null = null
   private skipNext = false
+  private skipCount = 0 // Number of additional players to skip (beyond the default 1)
   private drawPenalty = 0
   private lastPlayerWithOneCard: UnoPlayer | null = null // Track who had one card for UNO challenges
-  private unoChallengeWindow = 2000 // 2 seconds to challenge UNO call
+  private unoChallengeWindow: number // Time window to challenge UNO call (from rules)
   private lastActionCard: UnoCard | null = null // Track the last action card for stacking
   private rules: UnoRules
   private unoChallengeTimers: Map<string, ReturnType<typeof setTimeout>> = new Map() // Track UNO challenge timers
@@ -871,6 +880,7 @@ export class UnoGame {
   constructor(playerNames: string[], humanPlayerIndex = 0, rules: Partial<UnoRules> = {}, events: UnoGameEvents = {}, skipInitialDeal = false) {
     this.rules = { ...DEFAULT_RULES, ...rules }
     this.events = events
+    this.unoChallengeWindow = this.rules.unoChallengeWindow
     this.deck = new UnoDeck((remaining) => {
       this.emitEvent('onDeckReshuffled', remaining)
     }, this.rules.debugMode)
@@ -1350,8 +1360,13 @@ export class UnoGame {
       case "Wild":
         this.wildColor = chosenWildColor || this.chooseWildColorForCurrentPlayer()
         this.lastActionCard = null // Reset action card tracking
-        effect = "Wild - color changed to " + this.wildColor
-        this.debugLog('EFFECT', `Wild card played - color changed to ${this.wildColor}`)
+        // Apply wild card skip effect based on settings
+        if (this.rules.wildCardSkip > 1) {
+          this.skipNext = true
+          this.skipCount = this.rules.wildCardSkip - 2 // -2 because nextTurn() already advances by 1, and we want to skip additional players
+        }
+        effect = `Wild - color changed to ${this.wildColor}${this.rules.wildCardSkip > 0 ? `, skip ${this.rules.wildCardSkip} player(s)` : ''}`
+        this.debugLog('EFFECT', `Wild card played - color changed to ${this.wildColor}, skip effect: ${this.rules.wildCardSkip}`)
         break
 
       case "Wild Draw Four":
@@ -1652,6 +1667,8 @@ export class UnoGame {
 
   // Challenge a player for not calling UNO
   challengeUno(challengerId: string, targetPlayerId: string): boolean {
+    if (!this.rules.enableUnoChallenges) return false
+
     const challenger = this.players.find((p) => p.id === challengerId)
     const targetPlayer = this.players.find((p) => p.id === targetPlayerId)
 
@@ -1685,6 +1702,8 @@ export class UnoGame {
 
   // Challenge a player for making a false UNO call (calling UNO when they have more than one card)
   challengeFalseUno(challengerId: string, targetPlayerId: string): boolean {
+    if (!this.rules.enableUnoChallenges) return false
+
     const challenger = this.players.find((p) => p.id === challengerId)
     const targetPlayer = this.players.find((p) => p.id === targetPlayerId)
 
@@ -1715,6 +1734,8 @@ export class UnoGame {
 
   // Check if a player can be challenged for UNO
   canChallengeUno(targetPlayerId: string): boolean {
+    if (!this.rules.enableUnoChallenges) return false
+
     const targetPlayer = this.players.find((p) => p.id === targetPlayerId)
     if (!targetPlayer) return false
 
@@ -1723,6 +1744,8 @@ export class UnoGame {
 
   // Check if a player can be challenged for false UNO call
   canChallengeFalseUno(targetPlayerId: string): boolean {
+    if (!this.rules.enableUnoChallenges) return false
+
     const targetPlayer = this.players.find((p) => p.id === targetPlayerId)
     if (!targetPlayer) return false
 
@@ -1835,6 +1858,21 @@ export class UnoGame {
 
       this.currentPlayerIndex = skippedPlayerIndex
       this.skipNext = false
+
+      // Handle additional skips if skipCount > 0
+      if (this.skipCount > 0) {
+        this.debugLog('TURN', `Additional skip effect: skipping ${this.skipCount} more player(s)`)
+        for (let i = 0; i < this.skipCount; i++) {
+          const additionalSkippedIndex = (this.currentPlayerIndex + step + this.players.length) % this.players.length
+          const additionalSkippedPlayer = this.players[additionalSkippedIndex]
+
+          // Update state tracker for enhanced AI
+          this.stateTracker.onPlayerSkipped(additionalSkippedPlayer.id)
+
+          this.currentPlayerIndex = additionalSkippedIndex
+        }
+        this.skipCount = 0
+      }
     }
 
     this.currentPlayerIndex = (this.currentPlayerIndex + step + this.players.length) % this.players.length

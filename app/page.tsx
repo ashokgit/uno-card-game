@@ -716,6 +716,11 @@ function UnoGameInner() {
         setDirection(gameData.direction)
         setCurrentPlayerId(gameEngine.getCurrentPlayer().id)
 
+        // Check for penalty drawing animation after human player's turn
+        setTimeout(() => {
+          checkAndAnimatePenaltyDrawing()
+        }, 100)
+
         if (gameEngine.isGameOver()) {
           const winner = gameEngine.getRoundWinner()
           if (winner) {
@@ -727,6 +732,50 @@ function UnoGameInner() {
       setIsAnimating(false)
       setPlayDelay(false)
     }, userGameUpdateDelay)
+  }
+
+  // Add penalty particle effect function
+  const createPenaltyParticleEffect = (playerRect: DOMRect, penaltyCount: number) => {
+    // Limit particle effects to prevent performance issues
+    const existingParticles = document.querySelectorAll('.animate-particle-sparkle')
+    if (existingParticles.length > 10) {
+      console.log("Too many particles, skipping penalty particle effect")
+      return
+    }
+
+    const centerX = playerRect.left + playerRect.width / 2
+    const centerY = playerRect.top + playerRect.height / 2
+
+    // Create penalty-specific particle elements
+    const particleCount = penaltyCount * 2 // More particles for penalty effects
+    const colors = penaltyCount === 2
+      ? ["#ff6b6b", "#ff8e8e", "#ffb3b3", "#ffd6d6"] // Red tones for +2
+      : ["#ff6b6b", "#ff8e8e", "#ffb3b3", "#ffd6d6", "#ff0000", "#cc0000"] // More intense red for +4
+
+    for (let i = 0; i < particleCount; i++) {
+      const particle = document.createElement("div")
+      particle.className = "fixed pointer-events-none rounded-full animate-particle-sparkle"
+      particle.style.cssText = `
+        left: ${centerX}px;
+        top: ${centerY}px;
+        width: ${Math.random() * 10 + 6}px;
+        height: ${Math.random() * 10 + 6}px;
+        background: ${colors[Math.floor(Math.random() * colors.length)]};
+        z-index: 10002;
+        --sparkle-x: ${(Math.random() - 0.5) * 150}px;
+        --sparkle-y: ${(Math.random() - 0.5) * 150}px;
+        --sparkle-x2: ${(Math.random() - 0.5) * 300}px;
+        --sparkle-y2: ${(Math.random() - 0.5) * 300}px;
+      `
+      document.body.appendChild(particle)
+
+      // Remove particle after animation
+      setTimeout(() => {
+        if (particle.parentNode) {
+          particle.parentNode.removeChild(particle)
+        }
+      }, 1500)
+    }
   }
 
   // Add particle effect function
@@ -912,6 +961,11 @@ function UnoGameInner() {
       setDirection(gameData.direction)
       setCurrentPlayerId(gameEngine.getCurrentPlayer().id)
 
+      // Check for penalty drawing animation after human player's draw
+      setTimeout(() => {
+        checkAndAnimatePenaltyDrawing()
+      }, 100)
+
       setPlayDelay(false)
     }, userDrawUpdateDelay)
   }
@@ -977,6 +1031,11 @@ function UnoGameInner() {
       setDirection(gameData.direction)
       setCurrentPlayerId(gameEngine.getCurrentPlayer().id)
 
+      // Check for penalty drawing animation after wild card play
+      setTimeout(() => {
+        checkAndAnimatePenaltyDrawing()
+      }, 100)
+
       if (gameEngine.isGameOver()) {
         const winner = gameEngine.getRoundWinner()
         if (winner) {
@@ -1018,6 +1077,11 @@ function UnoGameInner() {
     if (success) {
       playSound("special")
       setFeedback({ message: "🎯 UNO Challenge Successful! +2 cards penalty!", type: "great" })
+
+      // Check for penalty drawing animation after successful challenge
+      setTimeout(() => {
+        checkAndAnimatePenaltyDrawing()
+      }, 100)
     } else {
       setFeedback({ message: "❌ UNO Challenge Failed!", type: "bad" })
     }
@@ -1030,6 +1094,11 @@ function UnoGameInner() {
     if (success) {
       playSound("special")
       setFeedback({ message: "🎯 Wild Draw Four Challenge Successful! +4 cards penalty!", type: "great" })
+
+      // Check for penalty drawing animation after successful challenge
+      setTimeout(() => {
+        checkAndAnimatePenaltyDrawing()
+      }, 100)
     } else {
       playSound("draw")
       setFeedback({ message: "❌ Wild Draw Four Challenge Failed! You draw 6 cards!", type: "bad" })
@@ -1242,6 +1311,12 @@ function UnoGameInner() {
               setCurrentCard(gameData.currentCard)
               setDirection(gameData.direction)
               setCurrentPlayerId(gameEngine.getCurrentPlayer().id)
+
+              // Check for penalty drawing animation after AI turn
+              setTimeout(() => {
+                checkAndAnimatePenaltyDrawing()
+              }, 100)
+
               setIsAITurnAnimating(false)
               setAiThinking(null)
             }, drawDelay)
@@ -1327,6 +1402,12 @@ function UnoGameInner() {
               setCurrentCard(gameData.currentCard)
               setDirection(gameData.direction)
               setCurrentPlayerId(gameEngine.getCurrentPlayer().id)
+
+              // Check for penalty drawing animation after AI turn
+              setTimeout(() => {
+                checkAndAnimatePenaltyDrawing()
+              }, 100)
+
               setIsAITurnAnimating(false)
               setAiThinking(null)
             }, throwDelay)
@@ -1378,6 +1459,12 @@ function UnoGameInner() {
             setCurrentCard(gameData.currentCard)
             setDirection(gameData.direction)
             setCurrentPlayerId(gameEngine.getCurrentPlayer().id)
+
+            // Check for penalty drawing animation after AI turn
+            setTimeout(() => {
+              checkAndAnimatePenaltyDrawing()
+            }, 100)
+
             setIsAITurnAnimating(false)
             setAiThinking(null)
           }
@@ -1429,6 +1516,12 @@ function UnoGameInner() {
           setCurrentCard(gameData.currentCard)
           setDirection(gameData.direction)
           setCurrentPlayerId(gameEngine.getCurrentPlayer().id)
+
+          // Check for penalty drawing animation after AI turn
+          setTimeout(() => {
+            checkAndAnimatePenaltyDrawing()
+          }, 100)
+
           setIsAITurnAnimating(false)
           setAiThinking(null)
         }
@@ -1845,6 +1938,109 @@ function UnoGameInner() {
     return {
       message: goodMessages[Math.floor(Math.random() * goodMessages.length)],
       type: "good",
+    }
+  }
+
+  // Create penalty drawing animation for +2 and +4 cards
+  const createPenaltyDrawingAnimation = (playerId: string, penaltyCount: number) => {
+    const deckElement = document.querySelector("[data-deck]")
+    const playerElement = document.querySelector(`[data-player="${playerId}"]`)
+
+    if (!deckElement || !playerElement) {
+      console.log("Penalty animation: DOM elements not found")
+      return
+    }
+
+    const deckRect = deckElement.getBoundingClientRect()
+    const playerRect = playerElement.getBoundingClientRect()
+
+    // Check if this is the human player (index 0)
+    const isHumanPlayer = playerId === "0"
+
+    // Create multiple card animations for penalty drawing
+    for (let i = 0; i < penaltyCount; i++) {
+      // Check animation limit
+      if (animatedCards.filter(card => card.isAnimating).length >= 3) {
+        console.log("Penalty animation: Animation limit reached")
+        break
+      }
+
+      const animatedCard = getAnimationFromPool()
+      animatedCard.card = {
+        id: Math.random() + i * 1000,
+        color: "red",
+        value: "?",
+        isPlayable: false
+      }
+      animatedCard.startX = deckRect.left + deckRect.width / 2
+      animatedCard.startY = deckRect.top + deckRect.height / 2
+      animatedCard.endX = playerRect.left + playerRect.width / 2
+      animatedCard.endY = playerRect.top + playerRect.height / 2
+      animatedCard.currentX = deckRect.left + deckRect.width / 2
+      animatedCard.currentY = deckRect.top + deckRect.height / 2
+      animatedCard.isAnimating = true
+      animatedCard.type = 'draw'
+      animatedCard.rotation = 0
+      animatedCard.scale = isHumanPlayer ? 1.2 : 1 // Slightly larger for human player
+      animatedCard.zIndex = 9999 + i // Higher z-index for penalty cards
+      animatedCard.trajectory = 'straight'
+      animatedCard.duration = isHumanPlayer ? 800 + Math.random() * 200 : 600 + Math.random() * 200 // Slightly slower for human player
+      animatedCard.delay = i * 150 // Stagger delay of 150ms between cards
+      animatedCard.startTime = Date.now() + animatedCard.delay
+      // Enhanced physics properties for penalty draw animation
+      animatedCard.velocity = { x: 0, y: 0 }
+      animatedCard.gravity = 0.3
+      animatedCard.bounce = 0.5
+      animatedCard.spin = Math.random() * 10 - 5
+      animatedCard.airResistance = 0.99
+      animatedCard.maxBounces = 1
+      animatedCard.bounceCount = 0
+
+      setAnimatedCards((prev) => [...prev, animatedCard])
+    }
+
+    // Play penalty drawing sound
+    playSound("card-flip")
+
+    // Add penalty particle effects
+    if (uiSettings.visualEffects) {
+      createPenaltyParticleEffect(playerRect, penaltyCount)
+    }
+
+    // Show penalty feedback with different messages for human vs AI
+    const penaltyMessages = {
+      2: isHumanPlayer
+        ? ["😱 You must draw 2 cards!", "💥 Draw Two penalty! Take 2 cards!", "⚡ +2 Strike! You draw 2 cards!"]
+        : ["😱 +2 Penalty! Draw 2 cards!", "💥 Draw Two effect! Take 2 cards!", "⚡ +2 Strike! Draw 2 cards!"],
+      4: isHumanPlayer
+        ? ["💀 You must draw 4 cards!", "🔥 Wild Draw Four penalty! Take 4 cards!", "💣 +4 Explosion! You draw 4 cards!"]
+        : ["💀 +4 Penalty! Draw 4 cards!", "🔥 Wild Draw Four! Take 4 cards!", "💣 +4 Explosion! Draw 4 cards!"]
+    }
+
+    const messages = penaltyMessages[penaltyCount as keyof typeof penaltyMessages] || ["📚 Penalty cards drawn!"]
+    const randomMessage = messages[Math.floor(Math.random() * messages.length)]
+
+    setFeedback({
+      message: randomMessage,
+      type: "bad"
+    })
+    setTimeout(() => setFeedback(null), 4000)
+  }
+
+  // Check for penalty drawing after game state updates
+  const checkAndAnimatePenaltyDrawing = () => {
+    if (!gameEngine) return
+
+    const currentPlayer = gameEngine.getCurrentPlayer()
+    const drawPenalty = gameEngine.getDrawPenalty()
+
+    // Animate penalty drawing for any player (including human)
+    if (drawPenalty > 0) {
+      const playerIndex = gameEngine.getPlayers().findIndex(p => p.id === currentPlayer.id)
+      if (playerIndex >= 0) { // Include human player (index 0)
+        console.log(`Creating penalty animation for ${currentPlayer.name}: ${drawPenalty} cards`)
+        createPenaltyDrawingAnimation(playerIndex.toString(), drawPenalty)
+      }
     }
   }
 

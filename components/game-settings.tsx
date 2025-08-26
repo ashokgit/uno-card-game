@@ -216,6 +216,75 @@ export function GameSettings({ isOpen, onClose, onStartGame, currentRules }: Gam
                                                 onCheckedChange={(checked) => updateRule('allowDrawWhenPlayable', checked)}
                                             />
                                         </div>
+                                        <div>
+                                            <label className="text-white font-medium">Wild Card Skip</label>
+                                            <div className="flex items-center gap-4 mt-2">
+                                                <Slider
+                                                    value={[gameSettings.rules.wildCardSkip]}
+                                                    onValueChange={([value]) => updateRule('wildCardSkip', value)}
+                                                    max={3}
+                                                    min={0}
+                                                    step={1}
+                                                    className="flex-1"
+                                                />
+                                                <Badge className="bg-purple-600 text-white min-w-[60px] text-center">
+                                                    {gameSettings.rules.wildCardSkip === 0 ? 'None' :
+                                                        gameSettings.rules.wildCardSkip === 1 ? 'Next' :
+                                                            `${gameSettings.rules.wildCardSkip} Players`}
+                                                </Badge>
+                                            </div>
+                                            <p className="text-gray-400 text-sm mt-1">
+                                                Number of players to skip when Wild card is played (0 = no skip, 1 = next player, 2 = skip next player)
+                                            </p>
+                                        </div>
+                                        <div className="flex items-center justify-between">
+                                            <div>
+                                                <p className="text-white font-medium">Enable UNO Challenges</p>
+                                                <p className="text-gray-400 text-sm">Allow players to challenge missed UNO calls</p>
+                                            </div>
+                                            <Switch
+                                                checked={gameSettings.rules.enableUnoChallenges}
+                                                onCheckedChange={(checked) => updateRule('enableUnoChallenges', checked)}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="text-white font-medium">UNO Challenge Window</label>
+                                            <div className="flex items-center gap-4 mt-2">
+                                                <Slider
+                                                    value={[gameSettings.rules.unoChallengeWindow / 1000]}
+                                                    onValueChange={([value]) => updateRule('unoChallengeWindow', value * 1000)}
+                                                    max={5}
+                                                    min={1}
+                                                    step={0.5}
+                                                    className="flex-1"
+                                                />
+                                                <Badge className="bg-orange-600 text-white min-w-[60px] text-center">
+                                                    {gameSettings.rules.unoChallengeWindow / 1000}s
+                                                </Badge>
+                                            </div>
+                                            <p className="text-gray-400 text-sm mt-1">
+                                                Time window to challenge UNO calls (in seconds)
+                                            </p>
+                                        </div>
+                                        <div>
+                                            <label className="text-white font-medium">Max Game Time</label>
+                                            <div className="flex items-center gap-4 mt-2">
+                                                <Slider
+                                                    value={[gameSettings.rules.maxGameTime]}
+                                                    onValueChange={([value]) => updateRule('maxGameTime', value)}
+                                                    max={60}
+                                                    min={0}
+                                                    step={5}
+                                                    className="flex-1"
+                                                />
+                                                <Badge className="bg-red-600 text-white min-w-[60px] text-center">
+                                                    {gameSettings.rules.maxGameTime === 0 ? 'No Limit' : `${gameSettings.rules.maxGameTime}m`}
+                                                </Badge>
+                                            </div>
+                                            <p className="text-gray-400 text-sm mt-1">
+                                                Maximum game time before auto-ending (0 = no limit)
+                                            </p>
+                                        </div>
                                     </div>
                                 </Card>
 

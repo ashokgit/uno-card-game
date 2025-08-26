@@ -59,6 +59,10 @@ const DEFAULT_GAME_RULES: UnoRules = {
   enableSwapHands: false,
   showDiscardPile: true,
   deadlockResolution: 'end_round',
+  wildCardSkip: 2,
+  unoChallengeWindow: 2000,
+  maxGameTime: 0,
+  enableUnoChallenges: true,
 }
 
 const DEFAULT_GAME_SETTINGS: GameSettings = {

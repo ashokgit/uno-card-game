@@ -51,6 +51,10 @@ const DEFAULT_GAME_RULES = {
   enableSwapHands: false,
   showDiscardPile: true,
   deadlockResolution: 'end_round',
+  wildCardSkip: 2,
+  unoChallengeWindow: 2000,
+  maxGameTime: 0,
+  enableUnoChallenges: true,
 };
 
 const DEFAULT_GAME_SETTINGS = {
@@ -216,6 +220,10 @@ function testSettingsValidation() {
       enableSwapHands: true,
       showDiscardPile: false,
       deadlockResolution: 'force_reshuffle',
+      wildCardSkip: 1,
+      unoChallengeWindow: 3000,
+      maxGameTime: 30,
+      enableUnoChallenges: true,
     },
     playerCount: 5
   };
@@ -224,7 +232,8 @@ function testSettingsValidation() {
   const requiredRulesKeys = [
     'stackDrawTwo', 'stackDrawFour', 'mustPlayIfDrawable', 'allowDrawWhenPlayable',
     'targetScore', 'debugMode', 'aiDifficulty', 'enableJumpIn', 'enableSevenZero',
-    'enableSwapHands', 'showDiscardPile', 'deadlockResolution'
+    'enableSwapHands', 'showDiscardPile', 'deadlockResolution', 'wildCardSkip',
+    'unoChallengeWindow', 'maxGameTime', 'enableUnoChallenges'
   ];
 
   const hasAllGameSettingsKeys = requiredGameSettingsKeys.every(key => key in validGameSettings);
@@ -245,6 +254,9 @@ function testSettingsValidation() {
     gameSpeed: validUISettings.gameSpeed >= 0.5 && validUISettings.gameSpeed <= 3.0,
     playerCount: validGameSettings.playerCount >= 2 && validGameSettings.playerCount <= 6,
     targetScore: validGameSettings.rules.targetScore >= 100 && validGameSettings.rules.targetScore <= 1000,
+    wildCardSkip: validGameSettings.rules.wildCardSkip >= 0 && validGameSettings.rules.wildCardSkip <= 3,
+    unoChallengeWindow: validGameSettings.rules.unoChallengeWindow >= 1000 && validGameSettings.rules.unoChallengeWindow <= 10000,
+    maxGameTime: validGameSettings.rules.maxGameTime >= 0 && validGameSettings.rules.maxGameTime <= 120,
   };
 
   const allRangesValid = Object.values(validRanges).every(valid => valid);
