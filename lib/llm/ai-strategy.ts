@@ -254,7 +254,23 @@ Choose the best color strategically.
 
     private parseLLMResponse(response: string, playableCards: UnoCard[]): UnoCard | null {
         try {
-            const parsed = JSON.parse(response)
+            // Clean the response - remove markdown code blocks if present
+            let cleanResponse = response.trim()
+            
+            // Remove markdown code blocks (```json ... ```)
+            if (cleanResponse.startsWith('```json')) {
+                cleanResponse = cleanResponse.replace(/^```json\s*/, '').replace(/\s*```$/, '')
+            } else if (cleanResponse.startsWith('```')) {
+                cleanResponse = cleanResponse.replace(/^```\s*/, '').replace(/\s*```$/, '')
+            }
+            
+            // Try to extract JSON from the response if it's not pure JSON
+            const jsonMatch = cleanResponse.match(/\{[\s\S]*\}/)
+            if (jsonMatch) {
+                cleanResponse = jsonMatch[0]
+            }
+            
+            const parsed = JSON.parse(cleanResponse)
 
             if (parsed.action === 'play' && parsed.card) {
                 // Find the card by ID
@@ -263,19 +279,41 @@ Choose the best color strategically.
                 if (selectedCard) {
                     console.log(`LLM reasoning: ${parsed.reasoning || 'No reasoning provided'}`)
                     return selectedCard
+                } else {
+                    console.warn(`LLM returned invalid card ID: ${parsed.card}`)
+                    console.warn(`Available card IDs: ${playableCards.map(c => c.id).join(', ')}`)
                 }
+            } else {
+                console.warn('LLM response missing required fields:', parsed)
             }
 
             return null
         } catch (error) {
             console.error('Failed to parse LLM response:', error)
+            console.error('Raw response:', response)
             return null
         }
     }
 
     private parseWildColorResponse(response: string): UnoColor | null {
         try {
-            const parsed = JSON.parse(response)
+            // Clean the response - remove markdown code blocks if present
+            let cleanResponse = response.trim()
+            
+            // Remove markdown code blocks (```json ... ```)
+            if (cleanResponse.startsWith('```json')) {
+                cleanResponse = cleanResponse.replace(/^```json\s*/, '').replace(/\s*```$/, '')
+            } else if (cleanResponse.startsWith('```')) {
+                cleanResponse = cleanResponse.replace(/^```\s*/, '').replace(/\s*```$/, '')
+            }
+            
+            // Try to extract JSON from the response if it's not pure JSON
+            const jsonMatch = cleanResponse.match(/\{[\s\S]*\}/)
+            if (jsonMatch) {
+                cleanResponse = jsonMatch[0]
+            }
+            
+            const parsed = JSON.parse(cleanResponse)
 
             if (parsed.action === 'wild_color' && parsed.color) {
                 const validColors: UnoColor[] = ['red', 'blue', 'green', 'yellow']
@@ -288,6 +326,7 @@ Choose the best color strategically.
             return null
         } catch (error) {
             console.error('Failed to parse LLM wild color response:', error)
+            console.error('Raw response:', response)
             return null
         }
     }
