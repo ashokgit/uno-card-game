@@ -256,20 +256,20 @@ Choose the best color strategically.
         try {
             // Clean the response - remove markdown code blocks if present
             let cleanResponse = response.trim()
-            
+
             // Remove markdown code blocks (```json ... ```)
             if (cleanResponse.startsWith('```json')) {
                 cleanResponse = cleanResponse.replace(/^```json\s*/, '').replace(/\s*```$/, '')
             } else if (cleanResponse.startsWith('```')) {
                 cleanResponse = cleanResponse.replace(/^```\s*/, '').replace(/\s*```$/, '')
             }
-            
+
             // Try to extract JSON from the response if it's not pure JSON
             const jsonMatch = cleanResponse.match(/\{[\s\S]*\}/)
             if (jsonMatch) {
                 cleanResponse = jsonMatch[0]
             }
-            
+
             const parsed = JSON.parse(cleanResponse)
 
             if (parsed.action === 'play' && parsed.card) {
@@ -299,20 +299,20 @@ Choose the best color strategically.
         try {
             // Clean the response - remove markdown code blocks if present
             let cleanResponse = response.trim()
-            
+
             // Remove markdown code blocks (```json ... ```)
             if (cleanResponse.startsWith('```json')) {
                 cleanResponse = cleanResponse.replace(/^```json\s*/, '').replace(/\s*```$/, '')
             } else if (cleanResponse.startsWith('```')) {
                 cleanResponse = cleanResponse.replace(/^```\s*/, '').replace(/\s*```$/, '')
             }
-            
+
             // Try to extract JSON from the response if it's not pure JSON
             const jsonMatch = cleanResponse.match(/\{[\s\S]*\}/)
             if (jsonMatch) {
                 cleanResponse = jsonMatch[0]
             }
-            
+
             const parsed = JSON.parse(cleanResponse)
 
             if (parsed.action === 'wild_color' && parsed.color) {
