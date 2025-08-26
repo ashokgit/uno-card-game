@@ -684,6 +684,13 @@ export class UnoDeck {
   getDiscardPile(): UnoCard[] {
     return [...this.discardPile]
   }
+
+  removeTopCard(): UnoCard | null {
+    if (this.discardPile.length === 0) {
+      return null
+    }
+    return this.discardPile.pop() || null
+  }
 }
 
 export class UnoPlayer {
@@ -857,6 +864,7 @@ export class UnoGame {
   private lastPlayerWithOneCard: UnoPlayer | null = null // Track who had one card for UNO challenges
   private unoChallengeWindow: number // Time window to challenge UNO call (from rules)
   private lastActionCard: UnoCard | null = null // Track the last action card for stacking
+  private wildDrawFourPlayer: UnoPlayer | null = null // Track who played the Wild Draw Four card
   private rules: UnoRules
   private unoChallengeTimers: Map<string, ReturnType<typeof setTimeout>> = new Map() // Track UNO challenge timers
   private events: UnoGameEvents
@@ -1008,6 +1016,9 @@ export class UnoGame {
   }
 
   private startGame(): void {
+    // Reset game state
+    this.wildDrawFourPlayer = null
+
     // Draw first card for discard pile
     let firstCard = this.deck.drawCard()
 
@@ -1236,13 +1247,16 @@ export class UnoGame {
       return { isValid: false, reason: "Card cannot be played on top card" }
     }
 
-    // Check if card can be stacked on previous action card (configurable)
-    if (this.lastActionCard && this.drawPenalty > 0) {
-      const canStack = (this.rules.stackDrawTwo && this.lastActionCard.value === "Draw Two" && card.value === "Draw Two") ||
+    // CRITICAL FIX: Prevent playing any card when there's a draw penalty that hasn't been drawn yet
+    if (this.drawPenalty > 0) {
+      // Only allow stacking if the rules permit it
+      const canStack = this.lastActionCard && (
+        (this.rules.stackDrawTwo && this.lastActionCard.value === "Draw Two" && card.value === "Draw Two") ||
         (this.rules.stackDrawFour && this.lastActionCard.value === "Wild Draw Four" && card.value === "Wild Draw Four")
+      )
 
       if (!canStack) {
-        return { isValid: false, reason: "Cannot play non-stackable card when draw penalty is active" }
+        return { isValid: false, reason: `Must draw ${this.drawPenalty} cards as penalty before playing any card` }
       }
     }
 
@@ -1379,6 +1393,8 @@ export class UnoGame {
           this.drawPenalty = 4
           effect = "Wild Draw Four"
           this.debugLog('EFFECT', 'Wild Draw Four effect applied - penalty set to 4')
+          // Track who played the Wild Draw Four card
+          this.wildDrawFourPlayer = this.getCurrentPlayer()
         }
         this.wildColor = chosenWildColor || this.chooseWildColorForCurrentPlayer()
         this.skipNext = true
@@ -1495,6 +1511,7 @@ export class UnoGame {
 
       this.drawPenalty = 0 // Reset penalty AFTER drawing
       this.lastActionCard = null // Clear stacking state
+      this.wildDrawFourPlayer = null // Reset Wild Draw Four player since penalty was applied
       this.nextTurn() // The player's turn is over after drawing the penalty
 
       // Return the last drawn card, or null if none were drawn
@@ -1793,12 +1810,18 @@ export class UnoGame {
       // Challenge succeeds: target player penalized
       const result = this.deck.drawCards(4)
       targetPlayer.addCards(result.drawnCards)
+
+      // CRITICAL FIX: Remove the Wild Draw Four card from play after successful challenge
+      this.deck.removeTopCard() // Remove the Wild Draw Four card
+
       // Clear the draw penalty since the challenge resolved it
       this.drawPenalty = 0
       // Reset skipNext so the challenger can play next (they successfully challenged)
       this.skipNext = false
+      // Reset the Wild Draw Four player since the challenge resolved it
+      this.wildDrawFourPlayer = null
       this.emitEvent("onWildDrawFourChallenged", challenger, targetPlayer, true)
-      this.log("Wild Draw Four challenge SUCCESS -", targetPlayer.name, "penalized")
+      this.log("Wild Draw Four challenge SUCCESS -", targetPlayer.name, "penalized, Wild Draw Four card removed")
       return true
     } else {
       // Challenge fails: challenger penalized
@@ -1807,6 +1830,8 @@ export class UnoGame {
       // Clear the draw penalty since the 6-card penalty fulfills the original 4-card penalty
       this.drawPenalty = 0
       // Keep skipNext = true so the challenger's turn is skipped (they failed the challenge)
+      // Reset the Wild Draw Four player since the challenge resolved it
+      this.wildDrawFourPlayer = null
       this.emitEvent("onWildDrawFourChallenged", challenger, targetPlayer, false)
       this.log("Wild Draw Four challenge FAILED -", challenger.name, "penalized")
       return false
@@ -1817,8 +1842,31 @@ export class UnoGame {
   canChallengeWildDrawFour(targetPlayerId: string): boolean {
     const targetPlayer = this.players.find(p => p.id === targetPlayerId)
     const topCard = this.getTopCard()
-    return !!(targetPlayer && topCard?.value === "Wild Draw Four" && this.previousActiveColor)
+
+    // Can only challenge the player who actually played the Wild Draw Four
+    const canChallenge = !!(
+      targetPlayer &&
+      topCard?.value === "Wild Draw Four" &&
+      this.previousActiveColor &&
+      this.wildDrawFourPlayer &&
+      targetPlayer.id === this.wildDrawFourPlayer.id
+    )
+
+    // Debug logging
+    if (topCard?.value === "Wild Draw Four") {
+      this.debugLog('CHALLENGE', `Wild Draw Four challenge check for ${targetPlayerId}:`, {
+        targetPlayer: targetPlayer?.name,
+        wildDrawFourPlayer: this.wildDrawFourPlayer?.name,
+        topCardValue: topCard.value,
+        previousActiveColor: this.previousActiveColor,
+        canChallenge
+      })
+    }
+
+    return canChallenge
   }
+
+
 
   // Check if a player can jump in with a specific card
   canJumpIn(playerId: string, cardId: string): boolean {
@@ -2577,6 +2625,9 @@ export class UnoGame {
 
     // Reset enhanced AI state tracker
     this.stateTracker.reset()
+
+    // Reset Wild Draw Four player tracking
+    this.wildDrawFourPlayer = null
 
     // Clear all UNO challenge timers
     this.unoChallengeTimers.forEach((timer) => clearTimeout(timer))

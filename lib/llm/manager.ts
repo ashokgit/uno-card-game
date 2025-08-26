@@ -144,17 +144,39 @@ export class LLMManager {
         })
     }
 
+    // Wild color specific request
+    async makeWildColorRequest(request: LLMGameRequest): Promise<LLMResponse> {
+        const wildColorPrompt = this.buildWildColorPrompt(request.gameContext, request.playerPersonality)
+
+        return this.makeRequest({
+            ...request,
+            prompt: wildColorPrompt,
+            systemMessage: UNO_PROMPTS.wildColor
+        })
+    }
+
     private buildGamePrompt(gameContext: GameContext, personality: string): string {
         return `
-You are playing UNO with the following personality: ${personality}
+Your Personality: ${personality}
 
-Current game state:
+Current Game State:
 - Your hand: ${gameContext.playerHand.join(', ')}
 - Top card: ${gameContext.topCard}
 - Available actions: ${gameContext.availableActions.join(', ')}
 - Other players: ${gameContext.otherPlayers.map(p => `${p.name} (${p.handSize} cards)`).join(', ')}
 
-Based on your personality and the current game state, make your move.
+Choose the best strategic move based on your personality.
+`
+    }
+
+    private buildWildColorPrompt(gameContext: GameContext, personality: string): string {
+        return `
+Your Personality: ${personality}
+
+Your hand: ${gameContext.playerHand.join(', ')}
+Other players: ${gameContext.otherPlayers.map(p => `${p.name} (${p.handSize} cards)`).join(', ')}
+
+Choose the best color strategically.
 `
     }
 

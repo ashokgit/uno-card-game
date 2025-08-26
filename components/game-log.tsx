@@ -431,7 +431,7 @@ export function GameLog({
 
         // Update processed event count
         setProcessedEventCount(eventLog.length)
-    }, [gameEngine?.getEventLog().length, processedEventCount])
+    }, [gameEngine, processedEventCount, debugMode])
 
     const clearLogs = () => {
         setLogs([])

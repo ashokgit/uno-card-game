@@ -1,82 +1,199 @@
-const { test, expect } = require('@playwright/test');
+const { UnoGame } = require('../lib/uno-engine')
+const { LLMAIStrategy } = require('../lib/llm/ai-strategy')
 
-test.describe('LLM Integration with Default Players', () => {
-    test.beforeEach(async ({ page }) => {
-        await page.goto('http://localhost:3091');
-        // Wait for the page to load
-        await page.waitForSelector('button:has-text("Settings")');
-        await page.click('button:has-text("Settings")');
-        // Wait for settings modal to open
-        await page.waitForSelector('text=Game Settings');
-    });
+// Mock game settings for testing
+const mockGameSettings = {
+  llmProviders: [
+    {
+      id: 'test-provider',
+      name: 'Test Provider',
+      apiKey: 'test-key',
+      model: 'test-model',
+      isActive: true,
+      testSuccess: true
+    }
+  ],
+  aiPlayers: [
+    {
+      id: 'test-player',
+      name: 'Test AI',
+      avatar: 'test-avatar.png',
+      llmProviderId: 'test-provider',
+      personality: 'I am a strategic and aggressive UNO player who likes to disrupt opponents.',
+      isActive: true
+    }
+  ]
+}
 
-    test('should show default players with Basic AI by default', async ({ page }) => {
-        // Navigate to LLM tab
-        await page.click('button[role="tab"]:has-text("LLM")');
-        
-        // Check if default players are visible
-        await expect(page.locator('text=Alice')).toBeVisible();
-        await expect(page.locator('text=Bob')).toBeVisible();
-        await expect(page.locator('text=Carol')).toBeVisible();
-        await expect(page.locator('text=Dave')).toBeVisible();
-        await expect(page.locator('text=Eve')).toBeVisible();
-        
-        // Check if they have "Basic AI" badges
-        const basicAIBadges = page.locator('text=Basic AI');
-        await expect(basicAIBadges).toHaveCount(5);
-        
-        // Check if they have "D" indicators for default players
-        const defaultIndicators = page.locator('.bg-blue-500');
-        await expect(defaultIndicators).toHaveCount(5);
-    });
+// Mock LLM manager for testing
+const mockLLMManager = {
+  makeRequest: async (request) => {
+    console.log('Mock LLM request:', request)
+    
+    // Simulate LLM response based on the prompt
+    if (request.prompt.includes('play')) {
+      return {
+        success: true,
+        content: JSON.stringify({
+          action: 'play',
+          card: 'test-card-id',
+          reasoning: 'This is the best strategic move based on my personality.'
+        })
+      }
+    } else if (request.prompt.includes('wild_color')) {
+      return {
+        success: true,
+        content: JSON.stringify({
+          action: 'wild_color',
+          color: 'red',
+          reasoning: 'I choose red because I have many red cards.'
+        })
+      }
+    }
+    
+    return {
+      success: false,
+      content: null,
+      error: 'Mock error'
+    }
+  }
+}
 
-    test('should allow assigning LLM to default players', async ({ page }) => {
-        // Navigate to LLM tab
-        await page.click('button[role="tab"]:has-text("LLM")');
-        
-        // Find Alice's LLM selector and change it to OpenAI
-        const aliceLLMSelect = page.locator('text=Alice').locator('..').locator('select').first();
-        await aliceLLMSelect.click();
-        await page.locator('text=OpenAI').click();
-        
-        // Check if Alice now has LLM badge
-        await expect(page.locator('text=Alice').locator('..').locator('text=LLM')).toBeVisible();
-    });
+// Mock the llmManager import
+jest.mock('../lib/llm/manager', () => ({
+  llmManager: mockLLMManager
+}))
 
-    test('should not allow removing default players', async ({ page }) => {
-        // Navigate to LLM tab
-        await page.click('button[role="tab"]:has-text("LLM")');
-        
-        // Check that default players don't have remove buttons
-        const aliceCard = page.locator('text=Alice').locator('..').locator('..').locator('..');
-        await expect(aliceCard.locator('text=Remove Player')).not.toBeVisible();
-        await expect(aliceCard.locator('text=Default player - cannot be removed')).toBeVisible();
-    });
+describe('LLM Integration Test', () => {
+  let game
+  let llmStrategy
 
-    test('should allow adding custom players', async ({ page }) => {
-        // Navigate to LLM tab
-        await page.click('button[role="tab"]:has-text("LLM")');
-        
-        // Add a custom player
-        await page.click('button:has-text("Add Player")');
-        
-        // Check if new player is added
-        await expect(page.locator('text=New AI Player')).toBeVisible();
-        
-        // Check if custom player can be removed
-        const newPlayerCard = page.locator('text=New AI Player').locator('..').locator('..').locator('..');
-        await expect(newPlayerCard.locator('text=Remove Player')).toBeVisible();
-    });
+  beforeEach(() => {
+    // Create a simple game
+    game = new UnoGame(['You', 'Test AI'], 0, {
+      aiDifficulty: 'expert',
+      debugMode: true
+    })
+    
+    // Create LLM strategy
+    llmStrategy = new LLMAIStrategy(
+      mockGameSettings.aiPlayers[0],
+      mockGameSettings,
+      []
+    )
+  })
 
-    test('should show info section explaining player types', async ({ page }) => {
-        // Navigate to LLM tab
-        await page.click('button[role="tab"]:has-text("LLM")');
-        
-        // Check if info section is visible
-        await expect(page.locator('text=Player Types:')).toBeVisible();
-        await expect(page.locator('text=Basic AI')).toBeVisible();
-        await expect(page.locator('text=LLM')).toBeVisible();
-        await expect(page.locator('text=Uses the existing game AI (default)')).toBeVisible();
-        await expect(page.locator('text=Uses configured LLM provider for enhanced gameplay')).toBeVisible();
-    });
-});
+  test('LLM strategy should handle single playable card without LLM call', async () => {
+    // Create a scenario with only one playable card
+    const mockPlayer = {
+      name: 'Test AI',
+      getHand: () => [
+        { id: 'card1', color: 'red', value: 5 },
+        { id: 'card2', color: 'blue', value: 7 }
+      ],
+      getHandSize: () => 2
+    }
+    
+    const playableCards = [{ id: 'card1', color: 'red', value: 5 }]
+    const gameState = { topCard: { color: 'red', value: 3 } }
+    
+    const result = await llmStrategy.chooseCard(playableCards, gameState, mockPlayer)
+    
+    expect(result).toBe(playableCards[0])
+  })
+
+  test('LLM strategy should use LLM for multiple playable cards', async () => {
+    const mockPlayer = {
+      name: 'Test AI',
+      getHand: () => [
+        { id: 'card1', color: 'red', value: 5 },
+        { id: 'card2', color: 'blue', value: 7 },
+        { id: 'card3', color: 'wild', value: 'Wild' }
+      ],
+      getHandSize: () => 3
+    }
+    
+    const playableCards = [
+      { id: 'card1', color: 'red', value: 5 },
+      { id: 'card3', color: 'wild', value: 'Wild' }
+    ]
+    const gameState = { 
+      topCard: { color: 'red', value: 3 },
+      players: [
+        { id: 'player1', name: 'You', handSize: 5, isHuman: true },
+        { id: 'player2', name: 'Test AI', handSize: 3, isHuman: false }
+      ]
+    }
+    
+    const result = await llmStrategy.chooseCard(playableCards, gameState, mockPlayer)
+    
+    // Should return the card that the mock LLM chose
+    expect(result.id).toBe('test-card-id')
+  })
+
+  test('LLM strategy should fallback to basic AI if LLM fails', async () => {
+    // Mock LLM to fail
+    const failingLLMManager = {
+      makeRequest: async () => ({
+        success: false,
+        content: null,
+        error: 'API error'
+      })
+    }
+    
+    // Temporarily replace the mock
+    jest.doMock('../lib/llm/manager', () => ({
+      llmManager: failingLLMManager
+    }))
+    
+    const mockPlayer = {
+      name: 'Test AI',
+      getHand: () => [
+        { id: 'card1', color: 'red', value: 5 },
+        { id: 'card2', color: 'blue', value: 7 }
+      ],
+      getHandSize: () => 2
+    }
+    
+    const playableCards = [
+      { id: 'card1', color: 'red', value: 5 },
+      { id: 'card2', color: 'blue', value: 7 }
+    ]
+    const gameState = { topCard: { color: 'red', value: 3 } }
+    
+    const result = await llmStrategy.chooseCard(playableCards, gameState, mockPlayer)
+    
+    // Should fallback to basic AI (prefer action cards, then numbers)
+    expect(result).toBe(playableCards[0]) // First card in this case
+  })
+
+  test('LLM strategy should handle wild color choice', async () => {
+    const mockPlayer = {
+      name: 'Test AI',
+      getHand: () => [
+        { id: 'card1', color: 'red', value: 5 },
+        { id: 'card2', color: 'blue', value: 7 }
+      ],
+      getHandSize: () => 2
+    }
+    
+    const hand = [
+      { id: 'card1', color: 'red', value: 5 },
+      { id: 'card2', color: 'blue', value: 7 }
+    ]
+    const gameState = { 
+      topCard: { color: 'wild', value: 'Wild' },
+      players: [
+        { id: 'player1', name: 'You', handSize: 5, isHuman: true },
+        { id: 'player2', name: 'Test AI', handSize: 2, isHuman: false }
+      ]
+    }
+    
+    const result = await llmStrategy.chooseWildColor(hand, gameState, mockPlayer)
+    
+    expect(result).toBe('red') // Based on mock LLM response
+  })
+})
+
+console.log('LLM Integration Test Suite Loaded')
+console.log('Run with: npm test -- tests/llm-integration-test.js')
