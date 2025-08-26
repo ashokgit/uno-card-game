@@ -184,6 +184,14 @@ function UnoGameInner() {
 
   // Initialize game engine with event handlers and LLM integration
   const initializeGameEngine = (playerNames: string[], rules: UnoRules) => {
+    console.log('🎮 Initializing game engine with LLM integration...')
+    console.log('🔧 Game settings passed to createLLMEnabledGame:')
+    console.log('   - LLM providers:', gameSettings.llmProviders.length)
+    console.log('   - Active providers:', gameSettings.llmProviders.filter(p => p.isActive).length)
+    console.log('   - AI players:', gameSettings.aiPlayers.length)
+    console.log('   - AI players with LLM:', gameSettings.aiPlayers.filter(p => p.llmProviderId).length)
+    console.log('   - Rules AI difficulty:', rules.aiDifficulty)
+
     const events = {
       onRoundEnd: (winner: any, points: number, scores: Map<string, number>) => {
         console.log(`🏆 Round ended! ${winner.name} earned ${points} points`)
@@ -228,20 +236,24 @@ function UnoGameInner() {
     // Calculate the actual player count needed (human + active AI players)
     const actualPlayerCount = 1 + activeAIPlayers.length
 
-    // If we don't have enough active AI players, fill with default names
-    if (playerNames.length < playerCount) {
-      const defaultNames = ["Alice", "Bob", "Carol", "Dave", "Eve"]
-      for (let i = playerNames.length; i < playerCount; i++) {
-        playerNames.push(defaultNames[i - 1] || `AI-${i}`)
-      }
-    }
+    // Always use all active AI players, regardless of the playerCount parameter
+    // This ensures LLM-enabled players are included
+    playerNames = playerNames.slice(0, actualPlayerCount)
 
-    // Use the actual player count instead of the parameter to ensure all active AI players are included
-    playerNames = playerNames.slice(0, Math.max(actualPlayerCount, playerCount))
+    console.log(`🎯 Player count logic: requested=${playerCount}, actual=${actualPlayerCount}, final=${playerNames.length}`)
 
     console.log('🎮 Starting game with players:', playerNames)
     console.log('🤖 Active AI players from settings:', activeAIPlayers.map(p => p.name))
     console.log('🎯 LLM players:', activeAIPlayers.filter(p => p.llmProviderId).map(p => p.name))
+    console.log('🔧 LLM Configuration Debug:')
+    console.log('   - Total LLM providers:', gameSettings.llmProviders.length)
+    console.log('   - Active LLM providers:', gameSettings.llmProviders.filter(p => p.isActive).map(p => p.name))
+    console.log('   - AI players with LLM:', gameSettings.aiPlayers.filter(p => p.llmProviderId).map(p => ({ name: p.name, provider: p.llmProviderId })))
+    console.log('   - AI difficulty:', rules.aiDifficulty)
+    console.log('🔍 Detailed AI Player Analysis:')
+    activeAIPlayers.forEach(player => {
+      console.log(`   - ${player.name}: LLM=${player.llmProviderId ? 'YES' : 'NO'} (${player.llmProviderId || 'none'})`)
+    })
 
     initializeGameEngine(playerNames, rules)
     setShowMainMenu(false)
@@ -1503,26 +1515,29 @@ function UnoGameInner() {
           return
         }
 
-        // Then, determine what the AI will do using the game engine's authoritative logic
-        const topCard = gameEngine.getTopCard()
+        // Then, determine what the AI will do using the game engine's authoritative AI decision logic
+        console.log(`🎯 Using game engine AI decision for ${currentPlayer.name}`)
+
+        // Use the game engine's AI decision logic (which includes LLM integration)
+        const aiDecision = await gameEngine.decideAITurn()
+
+        if (!aiDecision) {
+          console.log(`❌ No AI decision returned for ${currentPlayer.name}`)
+          setIsAITurnAnimating(false)
+          setAiThinking(null)
+          return
+        }
+
+        console.log(`✅ AI decision for ${currentPlayer.name}:`, aiDecision)
+
         let cardToPlay: GameCard | null = null
         let chosenWildColor: string | undefined = undefined
         let shouldDraw = false
 
-        if (topCard) {
-          // Use the game engine's getPlayableCards method as the single source of truth
-          const playableCards = currentPlayer.getPlayableCards(topCard, gameEngine.getWildColor() || undefined)
-
-          console.log("[DEBUG] AI playable cards check:")
-          console.log("  - Top card:", topCard.color, topCard.value)
-          console.log("  - Wild color:", gameEngine.getWildColor())
-          console.log("  - AI hand:", currentPlayer.getHand().map(c => `${c.color} ${c.value}`))
-          console.log("  - Playable cards:", playableCards.map(c => `${c.color} ${c.value}`))
-
-          if (playableCards.length > 0) {
-            // AI has playable cards - choose one using strategy
-            const chosenCard = playableCards[0] // Simple strategy: play first playable card
-
+        if (aiDecision.action === 'play' && aiDecision.cardId) {
+          // AI decided to play a card
+          const chosenCard = currentPlayer.getHand().find(c => c.id === aiDecision.cardId)
+          if (chosenCard) {
             cardToPlay = {
               id: Number.parseInt(chosenCard.id),
               color: chosenCard.color,
@@ -1531,35 +1546,26 @@ function UnoGameInner() {
             }
 
             if (chosenCard.isWildCard()) {
-              // AI chooses color based on most cards in hand
-              const aiHand = currentPlayer.getHand()
-              const colorCounts = { red: 0, blue: 0, green: 0, yellow: 0 }
-              aiHand.forEach(c => {
-                if (c.color !== "wild") {
-                  colorCounts[c.color as keyof typeof colorCounts]++
-                }
-              })
-              const maxColor = Object.entries(colorCounts).reduce((a, b) =>
-                colorCounts[a[0] as keyof typeof colorCounts] > colorCounts[b[0] as keyof typeof colorCounts] ? a : b
-              )[0]
-              chosenWildColor = maxColor
+              chosenWildColor = aiDecision.chosenColor
 
               // Show AI color selection confirmation
-              setColorConfirmation({
-                color: maxColor as 'red' | 'blue' | 'green' | 'yellow',
-                playerName: currentPlayer.name,
-                duration: 500
-              })
+              if (chosenWildColor) {
+                setColorConfirmation({
+                  color: chosenWildColor as 'red' | 'blue' | 'green' | 'yellow',
+                  playerName: currentPlayer.name,
+                  duration: 500
+                })
 
-              // Clear AI color confirmation after delay
-              setTimeout(() => {
-                setColorConfirmation(null)
-              }, 500)
+                // Clear AI color confirmation after delay
+                setTimeout(() => {
+                  setColorConfirmation(null)
+                }, 500)
+              }
             }
-          } else {
-            // No playable cards - AI should draw
-            shouldDraw = true
           }
+        } else if (aiDecision.action === 'draw') {
+          // AI decided to draw
+          shouldDraw = true
         }
 
         const currentPlayerIndex = gameEngine.getPlayers().findIndex((p) => p.id === currentPlayer.id)

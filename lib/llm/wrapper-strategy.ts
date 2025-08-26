@@ -12,6 +12,9 @@ export class LLMWrapperStrategy implements IAIStrategy {
     constructor(gameSettings: GameSettings, fallbackStrategy: IAIStrategy) {
         this.gameSettings = gameSettings
         this.fallbackStrategy = fallbackStrategy
+        console.log(`🔧 LLMWrapperStrategy constructor called`)
+        console.log(`   Fallback strategy: ${fallbackStrategy?.constructor.name || 'null'}`)
+        console.log(`   Game settings: ${gameSettings.aiPlayers.length} AI players`)
     }
 
     async chooseCard(playableCards: UnoCard[], gameState: IAIGameState, player: UnoPlayer): Promise<UnoCard | null> {
@@ -20,6 +23,7 @@ export class LLMWrapperStrategy implements IAIStrategy {
         console.log(`   Playable cards: ${playableCards.length}`)
         console.log(`   Player is human: ${player.isHuman}`)
         console.log(`   ⚡ LLM WRAPPER ACTIVE - This confirms LLM integration is working!`)
+        console.log(`   🔍 Looking for AI player with name: "${player.name}"`)
 
         // Check if this player should use LLM
         const aiPlayer = this.getAIPlayerForPlayer(player)
@@ -31,6 +35,7 @@ export class LLMWrapperStrategy implements IAIStrategy {
 
         if (!aiPlayer || !aiPlayer.llmProviderId) {
             console.log(`🚫 ${player.name}: BYPASSED LLM CALL - No LLM provider configured`)
+            console.log(`   Using fallback strategy: ${this.fallbackStrategy?.constructor.name || 'null'}`)
             return await this.fallbackStrategy.chooseCard(playableCards, gameState, player)
         }
 

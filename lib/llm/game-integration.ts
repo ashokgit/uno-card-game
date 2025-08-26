@@ -12,7 +12,10 @@ export function createLLMEnabledGame(
     gameSettings: GameSettings
 ): UnoGame {
     const game = new UnoGame(playerNames, humanPlayerIndex, rules, events, skipInitialDeal);
+
+    // Get the current enhanced AI strategy as fallback (should be ExpertAIStrategy after constructor)
     const fallbackStrategy = (game as any).enhancedAIStrategy;
+    console.log(`🔧 Fallback strategy type: ${fallbackStrategy?.constructor.name || 'null'}`);
 
     // ✅ USE THE NEW CLASS
     const llmWrapperStrategy = new LLMWrapperStrategy(gameSettings, fallbackStrategy);

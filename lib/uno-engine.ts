@@ -2786,6 +2786,11 @@ export class UnoGame {
       return null
     }
 
+    console.log(`🔍 chooseAICard called for ${player.name}`)
+    console.log(`   AI Difficulty: ${this.rules.aiDifficulty}`)
+    console.log(`   Enhanced AI Strategy available: ${this.enhancedAIStrategy ? 'YES' : 'NO'}`)
+    console.log(`   Enhanced AI Strategy type: ${this.enhancedAIStrategy?.constructor.name || 'null'}`)
+
     let selectedCard: UnoCard | null = null
     switch (this.rules.aiDifficulty) {
       case 'easy':
@@ -2801,6 +2806,7 @@ export class UnoGame {
         this.debugLog('AI', `${player.name} using hard strategy`)
         break
       case 'expert':
+        console.log(`🎯 ${player.name}: Using enhanced expert strategy`)
         selectedCard = await this.enhancedExpertAIStrategy(playableCards, topCard, player)
         this.debugLog('AI', `${player.name} using enhanced expert strategy`)
         break
