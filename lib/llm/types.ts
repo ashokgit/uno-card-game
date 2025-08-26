@@ -29,6 +29,7 @@ export interface LLMRequest {
     systemMessage?: string
     temperature?: number
     maxTokens?: number
+    playerName?: string // Add player name for tracking
 }
 
 export interface LLMResponse {

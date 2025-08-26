@@ -60,7 +60,8 @@ export class LLMAIStrategy {
                 provider,
                 prompt: this.buildGamePrompt(context),
                 systemMessage: this.buildSystemPrompt(),
-                maxTokens: 200
+                maxTokens: 200,
+                playerName: player.name
             })
 
             if (response.success && response.content) {
@@ -94,7 +95,8 @@ export class LLMAIStrategy {
                 provider,
                 prompt: this.buildWildColorPrompt(context),
                 systemMessage: this.buildWildColorSystemPrompt(),
-                maxTokens: 100
+                maxTokens: 100,
+                playerName: player.name
             })
 
             if (response.success && response.content) {

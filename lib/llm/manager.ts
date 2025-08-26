@@ -9,14 +9,27 @@ import {
 import { LLMProviderFactory } from './providers'
 import { UNO_PROMPTS } from './config'
 
+// Add LLM event interface
+export interface LLMEvents {
+    onLLMRequest?: (request: LLMRequest, playerName: string) => void
+    onLLMResponse?: (response: LLMResponse, playerName: string, request: LLMRequest) => void
+    onLLMError?: (error: string, playerName: string, request: LLMRequest) => void
+}
+
 export class LLMManager {
     private providers: Map<string, LLMProvider> = new Map()
     private connectionCache: Map<string, ConnectionTest> = new Map()
     private cacheTimeout = 5 * 60 * 1000 // 5 minutes
     private onTestResultUpdate?: (providerId: string, result: ConnectionTest) => void
+    private events: LLMEvents = {}
 
     constructor() {
         // Initialize with empty providers map
+    }
+
+    // Set LLM events callback
+    setEvents(events: LLMEvents) {
+        this.events = events
     }
 
     // Set callback for when test results are updated
@@ -121,15 +134,26 @@ export class LLMManager {
             }
         }
 
+        // Emit request event
+        this.events.onLLMRequest?.(request, request.playerName || 'Unknown')
+
         try {
             const providerType = LLMProviderFactory.getProviderType(provider)
             const llmProvider = LLMProviderFactory.createProvider(providerType)
-            return await llmProvider.makeRequest(request)
+            const response = await llmProvider.makeRequest(request)
+
+            // Emit response event
+            this.events.onLLMResponse?.(response, request.playerName || 'Unknown', request)
+
+            return response
         } catch (error) {
-            return {
+            const response: LLMResponse = {
                 success: false,
                 error: error instanceof Error ? error.message : 'Unknown error'
             }
+            // Emit error event
+            this.events.onLLMError?.(response.error || 'Unknown error', request.playerName || 'Unknown', request)
+            return response
         }
     }
 

@@ -34,10 +34,11 @@ interface GameLogProps {
 interface LogEntry {
     id: string
     timestamp: number
-    type: 'action' | 'turn' | 'event' | 'stat' | 'state'
+    type: 'action' | 'turn' | 'event' | 'stat' | 'state' | 'llm_request' | 'llm_response' | 'llm_error'
     message: string
     player?: string
     data?: any
+    fullData?: any // For storing full LLM request/response data
 }
 
 export function GameLog({
@@ -57,12 +58,20 @@ export function GameLog({
         wildCardsPlayed: 0,
         unoCalls: 0,
         challenges: 0,
+        llmRequests: 0,
+        llmResponses: 0,
+        llmErrors: 0,
         gameStartTime: Date.now(),
     })
     const scrollAreaRef = useRef<HTMLDivElement>(null)
     const [copied, setCopied] = useState(false)
-    const [debugMode, setDebugMode] = useState(true) // Enable debug mode by default for testing
+    const [debugMode, setDebugMode] = useState(true) // Enable debug mode by default
     const [processedEventCount, setProcessedEventCount] = useState(0)
+    const [llmEvents, setLlmEvents] = useState<{
+        onLLMRequest?: (request: any, playerName: string) => void
+        onLLMResponse?: (response: any, playerName: string, request: any) => void
+        onLLMError?: (error: string, playerName: string, request: any) => void
+    }>({})
 
     // Auto-scroll to bottom when new logs are added
     useEffect(() => {
@@ -73,6 +82,93 @@ export function GameLog({
             }
         }
     }, [logs])
+
+    // Set up LLM event handlers
+    useEffect(() => {
+        const { llmManager } = require('@/lib/llm/manager')
+
+        const llmEventHandlers = {
+            onLLMRequest: (request: any, playerName: string) => {
+                if (debugMode) {
+                    const trimmedPrompt = request.prompt.length > 100
+                        ? request.prompt.substring(0, 100) + '...'
+                        : request.prompt
+
+                    setStats(prev => ({
+                        ...prev,
+                        llmRequests: prev.llmRequests + 1
+                    }))
+
+                    addLog({
+                        type: 'llm_request',
+                        message: `🤖 ${playerName}: LLM Request to ${request.provider.name} (${request.provider.model})`,
+                        player: playerName,
+                        data: {
+                            provider: request.provider.name,
+                            model: request.provider.model,
+                            promptLength: request.prompt.length,
+                            maxTokens: request.maxTokens
+                        },
+                        fullData: request
+                    })
+                }
+            },
+            onLLMResponse: (response: any, playerName: string, request: any) => {
+                if (debugMode) {
+                    const trimmedContent = response.content && response.content.length > 100
+                        ? response.content.substring(0, 100) + '...'
+                        : response.content
+
+                    setStats(prev => ({
+                        ...prev,
+                        llmResponses: prev.llmResponses + 1
+                    }))
+
+                    addLog({
+                        type: 'llm_response',
+                        message: `✅ ${playerName}: LLM Response from ${request.provider.name} (${response.success ? 'Success' : 'Failed'})`,
+                        player: playerName,
+                        data: {
+                            provider: request.provider.name,
+                            model: request.provider.model,
+                            success: response.success,
+                            contentLength: response.content?.length || 0,
+                            responseTime: response.metadata?.responseTime,
+                            tokens: response.usage?.totalTokens
+                        },
+                        fullData: { response, request }
+                    })
+                }
+            },
+            onLLMError: (error: string, playerName: string, request: any) => {
+                if (debugMode) {
+                    setStats(prev => ({
+                        ...prev,
+                        llmErrors: prev.llmErrors + 1
+                    }))
+
+                    addLog({
+                        type: 'llm_error',
+                        message: `❌ ${playerName}: LLM Error from ${request.provider.name} - ${error}`,
+                        player: playerName,
+                        data: {
+                            provider: request.provider.name,
+                            model: request.provider.model,
+                            error: error
+                        },
+                        fullData: { error, request }
+                    })
+                }
+            }
+        }
+
+        setLlmEvents(llmEventHandlers)
+        llmManager.setEvents(llmEventHandlers)
+
+        return () => {
+            llmManager.setEvents({})
+        }
+    }, [debugMode])
 
     // Add log entry
     const addLog = (entry: Omit<LogEntry, 'id' | 'timestamp'>) => {
@@ -443,6 +539,9 @@ export function GameLog({
             wildCardsPlayed: 0,
             unoCalls: 0,
             challenges: 0,
+            llmRequests: 0,
+            llmResponses: 0,
+            llmErrors: 0,
             gameStartTime: Date.now(),
         })
         setProcessedEventCount(0)
@@ -451,7 +550,14 @@ export function GameLog({
     const copyLogsToClipboard = async () => {
         const logText = logs.map(log => {
             const timestamp = new Date(log.timestamp).toLocaleTimeString()
-            return `[${timestamp}] ${log.message}`
+            let logLine = `[${timestamp}] ${log.message}`
+
+            // Add full LLM data for copyable format
+            if (log.fullData && (log.type === 'llm_request' || log.type === 'llm_response' || log.type === 'llm_error')) {
+                logLine += `\n--- FULL DATA ---\n${JSON.stringify(log.fullData, null, 2)}\n--- END DATA ---`
+            }
+
+            return logLine
         }).join('\n')
 
         const statsText = `
@@ -464,6 +570,9 @@ Game Statistics:
 - Wild Cards: ${stats.wildCardsPlayed}
 - UNO Calls: ${stats.unoCalls}
 - Challenges: ${stats.challenges}
+${debugMode ? `- LLM Requests: ${stats.llmRequests}
+- LLM Responses: ${stats.llmResponses}
+- LLM Errors: ${stats.llmErrors}` : ''}
 - Current Direction: ${direction}
 - Top Card: ${currentCard?.value || 'None'}
 - Players: ${players.length}
@@ -487,6 +596,9 @@ Game Statistics:
             case 'event': return '⚡'
             case 'stat': return '📊'
             case 'state': return '📋'
+            case 'llm_request': return '🤖'
+            case 'llm_response': return '✅'
+            case 'llm_error': return '❌'
             default: return '📝'
         }
     }
@@ -498,6 +610,9 @@ Game Statistics:
             case 'event': return 'text-yellow-300'
             case 'stat': return 'text-purple-300'
             case 'state': return 'text-cyan-300'
+            case 'llm_request': return 'text-orange-300'
+            case 'llm_response': return 'text-green-300'
+            case 'llm_error': return 'text-red-300'
             default: return 'text-gray-300'
         }
     }
@@ -511,6 +626,19 @@ Game Statistics:
     }
 
     const gameDuration = Math.floor((Date.now() - stats.gameStartTime) / 1000)
+    const [expandedLogs, setExpandedLogs] = useState<Set<string>>(new Set())
+
+    const toggleLogExpansion = (logId: string) => {
+        setExpandedLogs(prev => {
+            const newSet = new Set(prev)
+            if (newSet.has(logId)) {
+                newSet.delete(logId)
+            } else {
+                newSet.add(logId)
+            }
+            return newSet
+        })
+    }
 
     if (!isVisible) {
         return (
@@ -623,10 +751,24 @@ Game Statistics:
                                         <span className="text-orange-300 font-semibold">{stats.challenges}</span>
                                     </div>
                                     {debugMode && (
-                                        <div className="flex justify-between">
-                                            <span className="text-green-400/70">Debug Mode:</span>
-                                            <span className="text-green-400 font-semibold">ON</span>
-                                        </div>
+                                        <>
+                                            <div className="flex justify-between">
+                                                <span className="text-green-400/70">Debug Mode:</span>
+                                                <span className="text-green-400 font-semibold">ON</span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span className="text-orange-400/70">LLM Requests:</span>
+                                                <span className="text-orange-400 font-semibold">{stats.llmRequests}</span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span className="text-green-400/70">LLM Responses:</span>
+                                                <span className="text-green-400 font-semibold">{stats.llmResponses}</span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span className="text-red-400/70">LLM Errors:</span>
+                                                <span className="text-red-400 font-semibold">{stats.llmErrors}</span>
+                                            </div>
+                                        </>
                                     )}
                                 </div>
 
@@ -668,10 +810,34 @@ Game Statistics:
                                             >
                                                 <span className="flex-shrink-0 text-lg">{getLogIcon(log.type)}</span>
                                                 <div className="flex-1 min-w-0">
-                                                    <div className="leading-tight font-medium">{log.message}</div>
+                                                    <div
+                                                        className={`leading-tight font-medium ${(log.type === 'llm_request' || log.type === 'llm_response' || log.type === 'llm_error') ? 'cursor-pointer hover:text-white' : ''}`}
+                                                        onClick={() => {
+                                                            if (log.type === 'llm_request' || log.type === 'llm_response' || log.type === 'llm_error') {
+                                                                toggleLogExpansion(log.id)
+                                                            }
+                                                        }}
+                                                    >
+                                                        {log.message}
+                                                        {(log.type === 'llm_request' || log.type === 'llm_response' || log.type === 'llm_error') && (
+                                                            <span className="text-xs text-white/50 ml-2">
+                                                                {expandedLogs.has(log.id) ? '▼' : '▶'}
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                     <div className="text-white/50 text-xs leading-tight mt-1">
                                                         {formatTime(log.timestamp)}
                                                     </div>
+
+                                                    {/* Expanded LLM data */}
+                                                    {expandedLogs.has(log.id) && log.fullData && (
+                                                        <div className="mt-2 p-2 bg-white/5 rounded text-xs font-mono overflow-x-auto">
+                                                            <div className="text-white/70 mb-1">Full Data:</div>
+                                                            <pre className="text-white/80 whitespace-pre-wrap">
+                                                                {JSON.stringify(log.fullData, null, 2)}
+                                                            </pre>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </div>
                                         ))
