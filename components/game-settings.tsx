@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -9,6 +9,8 @@ import { Slider } from "@/components/ui/slider"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"
+import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import {
     Settings,
     Gamepad2,
@@ -23,10 +25,14 @@ import {
     Palette,
     Info,
     Download,
-    Upload
+    Upload,
+    Plus,
+    Trash2
 } from "lucide-react"
 import { UnoRules } from "@/lib/uno-engine"
 import { useSettings } from "@/contexts/settings-context"
+import { LLMConnectionTestPanel, LLMConnectionTest } from "@/components/llm-connection-test"
+import { llmManager } from "@/lib/llm"
 
 interface GameSettingsProps {
     isOpen: boolean
@@ -42,10 +48,40 @@ export function GameSettings({ isOpen, onClose, onStartGame, currentRules }: Gam
         updateUISetting,
         updateRule,
         updateGameSetting,
+        addLLMProvider,
+        updateLLMProvider,
+        updateLLMProviderTestResult,
+        removeLLMProvider,
+        addAIPlayer,
+        updateAIPlayer,
+        removeAIPlayer,
         resetAllSettings,
         exportSettings,
         importSettings
     } = useSettings()
+
+    // Force re-render when LLM status changes
+    const [, forceUpdate] = useState({})
+
+    useEffect(() => {
+        const handleLLMStatusUpdate = () => forceUpdate({})
+        window.addEventListener('llm-status-updated', handleLLMStatusUpdate)
+        return () => window.removeEventListener('llm-status-updated', handleLLMStatusUpdate)
+    }, [])
+
+    // Set up LLM manager test result callback
+    useEffect(() => {
+        llmManager.setTestResultCallback((providerId, result) => {
+            updateLLMProviderTestResult(providerId, {
+                success: result.success,
+                responseTime: result.responseTime,
+                error: result.error
+            })
+        })
+
+        // Load existing test results from settings
+        llmManager.loadTestResults(gameSettings.llmProviders)
+    }, [updateLLMProviderTestResult, gameSettings.llmProviders])
 
     if (!isOpen) return null
 
@@ -145,7 +181,7 @@ export function GameSettings({ isOpen, onClose, onStartGame, currentRules }: Gam
 
                 <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
                     <Tabs defaultValue="rules" className="w-full">
-                        <TabsList className="grid w-full grid-cols-4 bg-slate-800/50 border border-slate-600/30">
+                        <TabsList className="grid w-full grid-cols-5 bg-slate-800/50 border border-slate-600/30">
                             <TabsTrigger value="rules" className="data-[state=active]:bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold">
                                 <Gamepad2 className="w-4 h-4 mr-2" />
                                 Rules
@@ -153,6 +189,10 @@ export function GameSettings({ isOpen, onClose, onStartGame, currentRules }: Gam
                             <TabsTrigger value="ai" className="data-[state=active]:bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-semibold">
                                 <Brain className="w-4 h-4 mr-2" />
                                 AI
+                            </TabsTrigger>
+                            <TabsTrigger value="llm" className="data-[state=active]:bg-gradient-to-r from-indigo-600 to-blue-600 text-white font-semibold">
+                                <Zap className="w-4 h-4 mr-2" />
+                                LLM
                             </TabsTrigger>
                             <TabsTrigger value="interface" className="data-[state=active]:bg-gradient-to-r from-purple-600 to-pink-600 text-white font-semibold">
                                 <Monitor className="w-4 h-4 mr-2" />
@@ -451,6 +491,355 @@ export function GameSettings({ isOpen, onClose, onStartGame, currentRules }: Gam
                                             Controls AI thinking time and animation speed
                                         </p>
                                     </div>
+                                </div>
+                            </Card>
+                        </TabsContent>
+
+                        {/* LLM Settings Tab */}
+                        <TabsContent value="llm" className="space-y-6 mt-6">
+                            {/* LLM Providers */}
+                            <Card className="p-6 bg-gradient-to-br from-slate-800/50 to-slate-700/50 border-slate-600/30 shadow-lg">
+                                <div className="flex items-center justify-between mb-4">
+                                    <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                                        <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-blue-500 rounded-full flex items-center justify-center">
+                                            <Zap className="w-4 h-4 text-white" />
+                                        </div>
+                                        LLM Providers
+                                    </h3>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => {
+                                            addLLMProvider({
+                                                name: 'New Provider',
+                                                apiKey: '',
+                                                model: 'gpt-3.5-turbo',
+                                                isActive: false
+                                            })
+                                        }}
+                                        className="bg-slate-700/50 text-white border-slate-500/50 hover:bg-slate-600/50"
+                                    >
+                                        Add Provider
+                                    </Button>
+                                </div>
+                                <div className="space-y-4">
+                                    {gameSettings.llmProviders.map((provider) => (
+                                        <Card key={provider.id} className="p-4 bg-slate-700/30 border-slate-600/20">
+                                            <div className="space-y-3">
+                                                <div className="flex items-center justify-between">
+                                                    <div className="flex items-center gap-2 flex-1 mr-2">
+                                                        <input
+                                                            type="text"
+                                                            value={provider.name}
+                                                            onChange={(e) => updateLLMProvider(provider.id, { name: e.target.value })}
+                                                            className="bg-black/50 border border-slate-500/50 text-white px-3 py-1 rounded text-sm flex-1"
+                                                            placeholder="Provider Name"
+                                                        />
+                                                        {llmManager.getConnectionStatus(provider.id)?.success && (
+                                                            <Badge className="bg-green-600/20 text-green-400 border-green-500/50 text-xs">
+                                                                Tested
+                                                            </Badge>
+                                                        )}
+                                                    </div>
+                                                    <Switch
+                                                        checked={provider.isActive}
+                                                        onCheckedChange={(checked) => updateLLMProvider(provider.id, { isActive: checked })}
+                                                        disabled={!llmManager.getConnectionStatus(provider.id)?.success}
+                                                        title={!llmManager.getConnectionStatus(provider.id)?.success ? "Test connection first" : ""}
+                                                    />
+                                                </div>
+                                                <input
+                                                    type="password"
+                                                    value={provider.apiKey}
+                                                    onChange={(e) => updateLLMProvider(provider.id, { apiKey: e.target.value })}
+                                                    className="bg-black/50 border border-slate-500/50 text-white px-3 py-1 rounded text-sm w-full"
+                                                    placeholder="API Key"
+                                                />
+                                                <input
+                                                    type="text"
+                                                    value={provider.baseUrl || ''}
+                                                    onChange={(e) => updateLLMProvider(provider.id, { baseUrl: e.target.value })}
+                                                    className="bg-black/50 border border-slate-500/50 text-white px-3 py-1 rounded text-sm w-full"
+                                                    placeholder="Base URL (optional)"
+                                                />
+                                                <div className="flex items-center gap-2">
+                                                    <input
+                                                        type="text"
+                                                        value={provider.model}
+                                                        onChange={(e) => updateLLMProvider(provider.id, { model: e.target.value })}
+                                                        className="bg-black/50 border border-slate-500/50 text-white px-3 py-1 rounded text-sm flex-1"
+                                                        placeholder="Model Name"
+                                                    />
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={() => removeLLMProvider(provider.id)}
+                                                        className="bg-red-600/20 text-red-400 border-red-500/50 hover:bg-red-600/30"
+                                                    >
+                                                        Remove
+                                                    </Button>
+                                                </div>
+
+                                                {/* Inline Connection Test */}
+                                                <div className="pt-2 border-t border-slate-600/20">
+                                                    <LLMConnectionTest
+                                                        provider={provider}
+                                                        onTestComplete={(result: any) => {
+                                                            console.log(`Test result for ${provider.name}:`, result)
+                                                        }}
+                                                    />
+                                                </div>
+                                            </div>
+                                        </Card>
+                                    ))}
+                                    {gameSettings.llmProviders.length === 0 && (
+                                        <div className="text-center py-8 text-gray-400">
+                                            <Zap className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                                            <p>No LLM providers configured</p>
+                                            <p className="text-sm">Add a provider to enable AI-powered gameplay</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </Card>
+
+                            {/* AI Players */}
+                            <Card className="p-6 bg-gradient-to-br from-slate-800/50 to-slate-700/50 border-slate-600/30 shadow-lg">
+                                <div className="flex items-center justify-between mb-4">
+                                    <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                                        <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center">
+                                            <Users className="w-4 h-4 text-white" />
+                                        </div>
+                                        AI Players
+                                    </h3>
+                                    <div className="flex gap-2">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => {
+                                                addAIPlayer({
+                                                    name: 'New AI Player',
+                                                    avatar: '/human-avatar.png',
+                                                    llmProviderId: null,
+                                                    personality: 'Friendly and strategic',
+                                                    isActive: false
+                                                })
+                                            }}
+                                            className="bg-slate-700/50 text-white border-slate-500/50 hover:bg-slate-600/50"
+                                        >
+                                            Add Player
+                                        </Button>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => {
+                                                if (confirm('Reset all AI players to defaults? This will remove any custom players.')) {
+                                                    resetAllSettings()
+                                                }
+                                            }}
+                                            className="bg-orange-600/20 text-orange-400 border-orange-500/50 hover:bg-orange-600/30"
+                                        >
+                                            Reset to Defaults
+                                        </Button>
+                                    </div>
+                                </div>
+                                <div className="space-y-4">
+                                    {gameSettings.aiPlayers.map((player) => (
+                                        <Card key={player.id} className={`p-4 border-slate-600/20 ${player.isDefault
+                                            ? 'bg-slate-700/30 border-blue-500/30'
+                                            : 'bg-slate-700/30 border-slate-600/20'
+                                            }`}>
+                                            <div className="space-y-3">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="relative">
+                                                        <img
+                                                            src={player.avatar}
+                                                            alt={player.name}
+                                                            className="w-12 h-12 rounded-full border-2 border-slate-500/50"
+                                                        />
+                                                        {player.isDefault && (
+                                                            <div className="absolute -top-1 -right-1 w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center">
+                                                                <span className="text-xs text-white font-bold">D</span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    <div className="flex-1">
+                                                        <div className="flex items-center gap-2">
+                                                            <input
+                                                                type="text"
+                                                                value={player.name}
+                                                                onChange={(e) => updateAIPlayer(player.id, { name: e.target.value })}
+                                                                className="bg-black/50 border border-slate-500/50 text-white px-3 py-1 rounded text-sm flex-1"
+                                                                placeholder="Player Name"
+                                                            />
+                                                            {player.llmProviderId && (
+                                                                (() => {
+                                                                    const provider = gameSettings.llmProviders.find(p => p.id === player.llmProviderId)
+                                                                    const isAvailable = provider &&
+                                                                        provider.isActive &&
+                                                                        llmManager.getConnectionStatus(provider.id)?.success
+                                                                    return (
+                                                                        <Badge className={`text-xs ${isAvailable
+                                                                            ? 'bg-green-600/20 text-green-400 border-green-500/50'
+                                                                            : 'bg-red-600/20 text-red-400 border-red-500/50'
+                                                                            }`}>
+                                                                            {isAvailable ? 'LLM' : 'LLM (Unavailable)'}
+                                                                        </Badge>
+                                                                    )
+                                                                })()
+                                                            )}
+                                                            {!player.llmProviderId && (
+                                                                <Badge className="bg-blue-600/20 text-blue-400 border-blue-500/50 text-xs">
+                                                                    Basic AI
+                                                                </Badge>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                    <Switch
+                                                        checked={player.isActive}
+                                                        onCheckedChange={(checked) => updateAIPlayer(player.id, { isActive: checked })}
+                                                    />
+                                                </div>
+                                                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                                    <div className="md:col-span-2">
+                                                        <label className="text-white/80 text-sm mb-1 block">LLM Provider</label>
+                                                        <Select
+                                                            value={player.llmProviderId || 'none'}
+                                                            onValueChange={(value) => updateAIPlayer(player.id, { llmProviderId: value === 'none' ? null : value })}
+                                                        >
+                                                            <SelectTrigger className="bg-black/50 border-slate-500/50 text-white text-sm">
+                                                                <SelectValue placeholder="Select LLM" />
+                                                            </SelectTrigger>
+                                                            <SelectContent className="bg-black/90 border-slate-500/50">
+                                                                <SelectItem value="none" className="text-white">Basic AI</SelectItem>
+                                                                {gameSettings.llmProviders
+                                                                    .filter(provider =>
+                                                                        provider.isActive &&
+                                                                        llmManager.getConnectionStatus(provider.id)?.success
+                                                                    )
+                                                                    .map((provider) => (
+                                                                        <SelectItem key={provider.id} value={provider.id} className="text-white">
+                                                                            {provider.name}
+                                                                        </SelectItem>
+                                                                    ))}
+                                                                {gameSettings.llmProviders
+                                                                    .filter(provider =>
+                                                                        provider.isActive &&
+                                                                        llmManager.getConnectionStatus(provider.id)?.success
+                                                                    ).length === 0 &&
+                                                                    gameSettings.llmProviders.length > 0 && (
+                                                                        <SelectItem value="no-llm" disabled className="text-gray-500 text-xs">
+                                                                            No tested & active LLM providers
+                                                                        </SelectItem>
+                                                                    )}
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                    <div>
+                                                        <label className="text-white/80 text-sm mb-1 block">Avatar</label>
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            onClick={() => {
+                                                                const avatars = [
+                                                                    '/human-avatar.png',
+                                                                    '/diverse-female-avatar.png',
+                                                                    '/female-avatar-2.png',
+                                                                    '/female-avatar-3.png',
+                                                                    '/male-avatar.png',
+                                                                    '/male-avatar-2.png',
+                                                                    '/male-avatar-3.png'
+                                                                ]
+                                                                const currentIndex = avatars.indexOf(player.avatar)
+                                                                const nextIndex = (currentIndex + 1) % avatars.length
+                                                                updateAIPlayer(player.id, { avatar: avatars[nextIndex] })
+                                                            }}
+                                                            className="w-full bg-slate-600/50 text-white border-slate-500/50 hover:bg-slate-500/50"
+                                                        >
+                                                            Change Avatar
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                                {player.llmProviderId && (
+                                                    <div>
+                                                        <label className="text-white/80 text-sm mb-1 block">Personality</label>
+                                                        <textarea
+                                                            value={player.personality}
+                                                            onChange={(e) => updateAIPlayer(player.id, { personality: e.target.value })}
+                                                            className="bg-black/50 border border-slate-500/50 text-white px-3 py-2 rounded text-sm w-full resize-none"
+                                                            placeholder="Describe the player's personality and playing style..."
+                                                            rows={3}
+                                                        />
+                                                    </div>
+                                                )}
+                                                {!player.isDefault && (
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={() => removeAIPlayer(player.id)}
+                                                        className="w-full bg-red-600/20 text-red-400 border-red-500/50 hover:bg-red-600/30"
+                                                    >
+                                                        Remove Player
+                                                    </Button>
+                                                )}
+                                                {player.isDefault && (
+                                                    <div className="text-center py-2 text-gray-400 text-sm">
+                                                        Default player - cannot be removed
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </Card>
+                                    ))}
+                                    {gameSettings.aiPlayers.length === 0 && (
+                                        <div className="text-center py-8 text-gray-400">
+                                            <Users className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                                            <p>No AI players configured</p>
+                                            <p className="text-sm">Add AI players to create custom opponents</p>
+                                        </div>
+                                    )}
+
+                                    {/* Debug Section - Temporary */}
+                                    <Card className="p-4 bg-yellow-900/20 border-yellow-500/30">
+                                        <div className="flex items-start gap-3">
+                                            <Info className="w-5 h-5 text-yellow-400 mt-0.5 flex-shrink-0" />
+                                            <div className="text-sm text-yellow-200">
+                                                <p className="font-semibold mb-2">Debug Info:</p>
+                                                <p>Total AI Players: {gameSettings.aiPlayers.length}</p>
+                                                <p>Default Players: {gameSettings.aiPlayers.filter(p => p.isDefault).length}</p>
+                                                <p>Custom Players: {gameSettings.aiPlayers.filter(p => !p.isDefault).length}</p>
+                                                <p>Active Players: {gameSettings.aiPlayers.filter(p => p.isActive).length}</p>
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() => {
+                                                        console.log('Current AI Players:', gameSettings.aiPlayers)
+                                                        console.log('Default Players:', gameSettings.aiPlayers.filter(p => p.isDefault))
+                                                    }}
+                                                    className="mt-2 bg-yellow-600/20 text-yellow-400 border-yellow-500/50 hover:bg-yellow-600/30"
+                                                >
+                                                    Log to Console
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    </Card>
+
+                                    {/* Info Section */}
+                                    <Card className="p-4 bg-blue-900/20 border-blue-500/30">
+                                        <div className="flex items-start gap-3">
+                                            <Info className="w-5 h-5 text-blue-400 mt-0.5 flex-shrink-0" />
+                                            <div className="text-sm text-blue-200">
+                                                <p className="font-semibold mb-2">Player Types:</p>
+                                                <ul className="space-y-1">
+                                                    <li><span className="bg-blue-600/20 text-blue-300 px-2 py-1 rounded text-xs">Basic AI</span> - Uses the existing game AI (default)</li>
+                                                    <li><span className="bg-green-600/20 text-green-300 px-2 py-1 rounded text-xs">LLM</span> - Uses configured LLM provider for enhanced gameplay</li>
+                                                </ul>
+                                                <p className="mt-2 text-blue-300">
+                                                    Default players (marked with "D") use Basic AI by default.
+                                                    <br />
+                                                    <strong>LLM Rules:</strong> Providers must be tested before activation. Only tested & active providers can be assigned to players.
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </Card>
                                 </div>
                             </Card>
                         </TabsContent>

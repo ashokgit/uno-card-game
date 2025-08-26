@@ -15,9 +15,34 @@ interface UISettings {
   gameSpeed: number
 }
 
+interface LLMProvider {
+  id: string
+  name: string
+  apiKey: string
+  baseUrl?: string
+  model: string
+  isActive: boolean
+  lastTested?: number
+  testSuccess?: boolean
+  testError?: string
+  responseTime?: number
+}
+
+interface AIPlayer {
+  id: string
+  name: string
+  avatar: string
+  llmProviderId: string | null
+  personality: string
+  isActive: boolean
+  isDefault?: boolean
+}
+
 interface GameSettings {
   rules: UnoRules
   playerCount: number
+  llmProviders: LLMProvider[]
+  aiPlayers: AIPlayer[]
 }
 
 interface SettingsContextType {
@@ -26,6 +51,13 @@ interface SettingsContextType {
   updateUISetting: (key: keyof UISettings, value: any) => void
   updateGameSetting: (key: keyof GameSettings, value: any) => void
   updateRule: (key: keyof UnoRules, value: any) => void
+  addLLMProvider: (provider: Omit<LLMProvider, 'id'>) => void
+  updateLLMProvider: (id: string, updates: Partial<LLMProvider>) => void
+  updateLLMProviderTestResult: (id: string, testResult: { success: boolean; responseTime: number; error?: string }) => void
+  removeLLMProvider: (id: string) => void
+  addAIPlayer: (player: Omit<AIPlayer, 'id'>) => void
+  updateAIPlayer: (id: string, updates: Partial<AIPlayer>) => void
+  removeAIPlayer: (id: string) => void
   resetUISettings: () => void
   resetGameSettings: () => void
   resetAllSettings: () => void
@@ -68,6 +100,71 @@ const DEFAULT_GAME_RULES: UnoRules = {
 const DEFAULT_GAME_SETTINGS: GameSettings = {
   rules: DEFAULT_GAME_RULES,
   playerCount: 6,
+  llmProviders: [
+    {
+      id: 'openai-default',
+      name: 'OpenAI',
+      apiKey: '',
+      baseUrl: 'https://api.openai.com/v1',
+      model: 'gpt-3.5-turbo',
+      isActive: false
+    },
+    {
+      id: 'anthropic-default',
+      name: 'Anthropic',
+      apiKey: '',
+      baseUrl: 'https://api.anthropic.com',
+      model: 'claude-3-haiku-20240307',
+      isActive: false
+    }
+  ],
+  aiPlayers: [
+    {
+      id: 'alice-default',
+      name: 'Alice',
+      avatar: '/female-avatar-2.png',
+      llmProviderId: null,
+      personality: 'Strategic and analytical player who thinks several moves ahead',
+      isActive: true,
+      isDefault: true
+    },
+    {
+      id: 'bob-default',
+      name: 'Bob',
+      avatar: '/male-avatar.png',
+      llmProviderId: null,
+      personality: 'Aggressive player who likes to use action cards frequently',
+      isActive: true,
+      isDefault: true
+    },
+    {
+      id: 'carol-default',
+      name: 'Carol',
+      avatar: '/diverse-female-avatar.png',
+      llmProviderId: null,
+      personality: 'Defensive player who prefers to hold onto cards until the right moment',
+      isActive: true,
+      isDefault: true
+    },
+    {
+      id: 'dave-default',
+      name: 'Dave',
+      avatar: '/male-avatar-2.png',
+      llmProviderId: null,
+      personality: 'Balanced player who adapts strategy based on the game situation',
+      isActive: true,
+      isDefault: true
+    },
+    {
+      id: 'eve-default',
+      name: 'Eve',
+      avatar: '/female-avatar-3.png',
+      llmProviderId: null,
+      personality: 'Creative player who makes unexpected moves and takes calculated risks',
+      isActive: true,
+      isDefault: true
+    }
+  ],
 }
 
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined)
@@ -75,6 +172,7 @@ const SettingsContext = createContext<SettingsContextType | undefined>(undefined
 export function SettingsProvider({ children }: { children: ReactNode }) {
   const [uiSettings, setUISettings] = useState<UISettings>(DEFAULT_UI_SETTINGS)
   const [gameSettings, setGameSettings] = useState<GameSettings>(DEFAULT_GAME_SETTINGS)
+  const [isInitialized, setIsInitialized] = useState(false)
 
   // Load settings from localStorage on mount
   useEffect(() => {
@@ -93,22 +191,38 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     if (savedGameSettings) {
       try {
         const parsed = JSON.parse(savedGameSettings)
-        setGameSettings({ ...DEFAULT_GAME_SETTINGS, ...parsed })
+        // Ensure default players are always preserved
+        const mergedSettings = {
+          ...DEFAULT_GAME_SETTINGS,
+          ...parsed,
+          // Always preserve default players, merge with any custom players
+          aiPlayers: [
+            ...DEFAULT_GAME_SETTINGS.aiPlayers,
+            ...(parsed.aiPlayers?.filter((player: any) => !player.isDefault) || [])
+          ]
+        }
+        setGameSettings(mergedSettings)
       } catch (error) {
         console.warn('Failed to parse saved game settings:', error)
       }
     }
+
+    setIsInitialized(true)
   }, [])
 
-  // Save UI settings to localStorage whenever they change
+  // Save UI settings to localStorage whenever they change (only after initialization)
   useEffect(() => {
-    localStorage.setItem('uno-ui-settings', JSON.stringify(uiSettings))
-  }, [uiSettings])
+    if (isInitialized) {
+      localStorage.setItem('uno-ui-settings', JSON.stringify(uiSettings))
+    }
+  }, [uiSettings, isInitialized])
 
-  // Save game settings to localStorage whenever they change
+  // Save game settings to localStorage whenever they change (only after initialization)
   useEffect(() => {
-    localStorage.setItem('uno-game-settings', JSON.stringify(gameSettings))
-  }, [gameSettings])
+    if (isInitialized) {
+      localStorage.setItem('uno-game-settings', JSON.stringify(gameSettings))
+    }
+  }, [gameSettings, isInitialized])
 
   const updateUISetting = (key: keyof UISettings, value: any) => {
     setUISettings(prev => ({ ...prev, [key]: value }))
@@ -122,6 +236,79 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     setGameSettings(prev => ({
       ...prev,
       rules: { ...prev.rules, [key]: value }
+    }))
+  }
+
+  const addLLMProvider = (provider: Omit<LLMProvider, 'id'>) => {
+    const newProvider: LLMProvider = {
+      ...provider,
+      id: `llm-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    }
+    setGameSettings(prev => ({
+      ...prev,
+      llmProviders: [...prev.llmProviders, newProvider]
+    }))
+  }
+
+  const updateLLMProvider = (id: string, updates: Partial<LLMProvider>) => {
+    setGameSettings(prev => ({
+      ...prev,
+      llmProviders: prev.llmProviders.map(provider =>
+        provider.id === id ? { ...provider, ...updates } : provider
+      )
+    }))
+  }
+
+  const updateLLMProviderTestResult = (id: string, testResult: {
+    success: boolean
+    responseTime: number
+    error?: string
+  }) => {
+    setGameSettings(prev => ({
+      ...prev,
+      llmProviders: prev.llmProviders.map(provider =>
+        provider.id === id ? {
+          ...provider,
+          lastTested: Date.now(),
+          testSuccess: testResult.success,
+          testError: testResult.error,
+          responseTime: testResult.responseTime
+        } : provider
+      )
+    }))
+  }
+
+  const removeLLMProvider = (id: string) => {
+    setGameSettings(prev => ({
+      ...prev,
+      llmProviders: prev.llmProviders.filter(provider => provider.id !== id)
+    }))
+  }
+
+  const addAIPlayer = (player: Omit<AIPlayer, 'id'>) => {
+    const newPlayer: AIPlayer = {
+      ...player,
+      id: `ai-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    }
+    setGameSettings(prev => ({
+      ...prev,
+      aiPlayers: [...prev.aiPlayers, newPlayer]
+    }))
+  }
+
+  const updateAIPlayer = (id: string, updates: Partial<AIPlayer>) => {
+    setGameSettings(prev => ({
+      ...prev,
+      aiPlayers: prev.aiPlayers.map(player =>
+        player.id === id ? { ...player, ...updates } : player
+      )
+    }))
+  }
+
+  const removeAIPlayer = (id: string) => {
+    setGameSettings(prev => ({
+      ...prev,
+      aiPlayers: prev.aiPlayers.filter(player => player.id !== id)
     }))
   }
 
@@ -180,6 +367,13 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       updateUISetting,
       updateGameSetting,
       updateRule,
+      addLLMProvider,
+      updateLLMProvider,
+      updateLLMProviderTestResult,
+      removeLLMProvider,
+      addAIPlayer,
+      updateAIPlayer,
+      removeAIPlayer,
       resetUISettings,
       resetGameSettings,
       resetAllSettings,

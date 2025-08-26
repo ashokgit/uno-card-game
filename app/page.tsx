@@ -201,7 +201,20 @@ function UnoGameInner() {
   }
 
   const startGame = (rules: UnoRules, playerCount: number) => {
-    const playerNames = ["You", "Alice", "Bob", "Carol", "Dave", "Eve"].slice(0, playerCount)
+    // Get active AI players from settings
+    const activeAIPlayers = gameSettings.aiPlayers.filter(player => player.isActive)
+    
+    // Create player names array: "You" + active AI players
+    const playerNames = ["You", ...activeAIPlayers.map(player => player.name)].slice(0, playerCount)
+    
+    // If we don't have enough active AI players, fill with default names
+    if (playerNames.length < playerCount) {
+      const defaultNames = ["Alice", "Bob", "Carol", "Dave", "Eve"]
+      for (let i = playerNames.length; i < playerCount; i++) {
+        playerNames.push(defaultNames[i - 1] || `AI-${i}`)
+      }
+    }
+    
     initializeGameEngine(playerNames, rules)
     setShowMainMenu(false)
   }
