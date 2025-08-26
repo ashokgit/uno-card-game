@@ -1480,6 +1480,28 @@ export class UnoGame {
       return null
     }
 
+    // ✅ NEW CORE LOGIC: Handle pending penalty here ✅
+    if (this.drawPenalty > 0) {
+      this.debugLog('DRAW', `${player.name} must draw ${this.drawPenalty} cards as penalty`)
+      const result = this.deck.drawCards(this.drawPenalty)
+      player.addCards(result.drawnCards)
+      this.log(`${player.name} drew ${result.drawnCards.length} as penalty`)
+
+      // Emit events for each card drawn
+      result.drawnCards.forEach(card => {
+        this.emitEvent('onCardDrawn', player, card, false)
+        this.stateTracker.onCardDrawn(player.id, card)
+      })
+
+      this.drawPenalty = 0 // Reset penalty AFTER drawing
+      this.lastActionCard = null // Clear stacking state
+      this.nextTurn() // The player's turn is over after drawing the penalty
+
+      // Return the last drawn card, or null if none were drawn
+      return result.drawnCards.length > 0 ? result.drawnCards[result.drawnCards.length - 1] : null
+    }
+    // End of new penalty logic
+
     const topCard = this.getTopCard()
     if (!topCard) {
       this.debugLog('DRAW', `Draw failed: no top card available`)
@@ -1880,35 +1902,8 @@ export class UnoGame {
 
     this.debugLog('TURN', `Turn changed from ${previousPlayer.name} to ${current.name} (direction: ${this.direction})`)
 
-    // Apply pending draw penalty
-    if (this.drawPenalty > 0) {
-      this.debugLog('TURN', `${current.name} must draw ${this.drawPenalty} cards as penalty`)
-      const result = this.deck.drawCards(this.drawPenalty)
-      current.addCards(result.drawnCards)
-      this.log(`${current.name} drew ${result.drawnCards.length} as penalty (requested: ${this.drawPenalty})`)
-      this.debugLog('TURN', `Penalty cards drawn: ${result.drawnCards.map(c => `${c.color} ${c.value}`).join(', ')}`)
-
-      // FIX: Update state tracker for penalty draws
-      result.drawnCards.forEach(card => {
-        this.stateTracker.onCardDrawn(current.id, card)
-      })
-
-      // Check if deck was exhausted during penalty
-      if (result.isExhausted && result.drawnCards.length < this.drawPenalty) {
-        this.debugLog('DEADLOCK', `Deck exhausted during penalty draw. Drew ${result.drawnCards.length}/${this.drawPenalty} cards.`)
-        this.log(`Deck exhausted during penalty - resolving deadlock`)
-
-        // Resolve deadlock immediately since no more cards can be drawn
-        if (this.rules.deadlockResolution === 'force_reshuffle') {
-          this.resolveDeadlockWithReshuffle()
-        } else {
-          this.resolveDeadlock()
-        }
-        return // Exit early to prevent further processing
-      }
-
-      this.drawPenalty = 0
-    }
+    // ❌ REMOVED: Penalty application logic moved to drawCard() method
+    // The penalty will now be applied when the penalized player takes their action
 
     // Increment turn counter for deadlock detection
     this.turnCount++
@@ -2652,7 +2647,14 @@ export class UnoGame {
 
     if (!topCard || this.isPaused) return null
 
-    // Try to play a card
+    // ✅ NEW LOGIC: If there's a penalty, the only action is to draw
+    if (this.drawPenalty > 0) {
+      this.debugLog('AI', `${currentPlayer.name} has penalty of ${this.drawPenalty} cards - must draw`)
+      return { action: 'draw' }
+    }
+    // End of new logic
+
+    // Try to play a card (this logic is now only reached if there's no penalty)
     const cardToPlay = this.chooseAICard(currentPlayer, topCard)
     if (cardToPlay) {
       let chosenColor: UnoColor | undefined

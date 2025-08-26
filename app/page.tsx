@@ -582,6 +582,15 @@ function UnoGameInner() {
       playSound("special")
       // Add particle effects for action cards
       createParticleEffect(cardToPlay, "action")
+
+      // Show immediate feedback for +2 cards
+      if (cardToPlay.value === "Draw Two") {
+        setFeedback({
+          message: "⚡ Draw Two played! Next player draws 2!",
+          type: "great"
+        })
+        setTimeout(() => setFeedback(null), 3000)
+      }
     } else {
       playSound("play")
       // Add subtle particle effects for number cards
@@ -690,48 +699,87 @@ function UnoGameInner() {
       return
     }
 
-    // Delay game state update until animation completes with randomized timing
-    const userGameUpdateDelay = userThrowDuration + Math.random() * 200 + 200 // Add 200-400ms buffer
-    setTimeout(() => {
-      console.log("[DEBUG] User card play attempt:")
-      console.log("  - Card:", cardToPlay.color, cardToPlay.value)
-      console.log("  - Top card:", currentCard ? `${currentCard.color} ${currentCard.value}` : 'None')
-      console.log("  - Wild color:", gameEngine.getWildColor())
+    // --- CORE CHANGE: IMMEDIATE STATE UPDATE ---
+    console.log("[DEBUG] User card play attempt:")
+    console.log("  - Card:", cardToPlay.color, cardToPlay.value)
+    console.log("  - Top card:", currentCard ? `${currentCard.color} ${currentCard.value}` : 'None')
+    console.log("  - Wild color:", gameEngine.getWildColor())
 
-      const success = gameEngine.playCard("player_0", cardToPlay.id.toString())
-      console.log("[v0] User card play result:", success, "New current player:", gameEngine.getCurrentPlayer().name)
+    const success = gameEngine.playCard("player_0", cardToPlay.id.toString())
+    console.log("[v0] User card play result:", success, "New current player:", gameEngine.getCurrentPlayer().name)
 
-      if (!success) {
-        console.log("[ERROR] User card play failed!")
-        // Don't proceed with turn change if play failed
-        setIsAnimating(false)
-        setPlayDelay(false)
-        return
-      }
-
-      if (success) {
-        const gameData = convertToUIFormat()
-        setPlayers(gameData.players)
-        setCurrentCard(gameData.currentCard)
-        setDirection(gameData.direction)
-        setCurrentPlayerId(gameEngine.getCurrentPlayer().id)
-
-        // Check for penalty drawing animation after human player's turn
-        setTimeout(() => {
-          checkAndAnimatePenaltyDrawing()
-        }, 100)
-
-        if (gameEngine.isGameOver()) {
-          const winner = gameEngine.getRoundWinner()
-          if (winner) {
-            playSound("win")
-          }
-        }
-      }
-
+    if (!success) {
+      console.log("[ERROR] User card play failed!")
+      // Don't proceed with turn change if play failed
       setIsAnimating(false)
       setPlayDelay(false)
-    }, userGameUpdateDelay)
+      return
+    }
+
+    if (success) {
+      const gameData = convertToUIFormat()
+      setPlayers(gameData.players)
+      setCurrentCard(gameData.currentCard)
+      setDirection(gameData.direction)
+      setCurrentPlayerId(gameEngine.getCurrentPlayer().id)
+
+      if (gameEngine.isGameOver()) {
+        const winner = gameEngine.getRoundWinner()
+        if (winner) {
+          playSound("win")
+        }
+      }
+    }
+
+    // Reset delay after a short duration to allow animations to feel natural
+    setTimeout(() => {
+      setIsAnimating(false)
+      setPlayDelay(false)
+    }, 500); // A small delay is fine here
+  }
+
+  // Add action card particle effect function
+  const createActionCardParticleEffect = (playerRect: DOMRect, penaltyCount: number, cardType: string) => {
+    // Limit particle effects to prevent performance issues
+    const existingParticles = document.querySelectorAll('.animate-particle-sparkle')
+    if (existingParticles.length > 10) {
+      console.log("Too many particles, skipping action card particle effect")
+      return
+    }
+
+    const centerX = playerRect.left + playerRect.width / 2
+    const centerY = playerRect.top + playerRect.height / 2
+
+    // Create action card-specific particle elements
+    const particleCount = penaltyCount * 1.5 // Fewer particles for action card effects
+    const colors = cardType === 'Draw Two'
+      ? ["#ff6b6b", "#ff8e8e", "#ffb3b3", "#ffd6d6", "#ff4444"] // Red tones for +2
+      : ["#ff6b6b", "#ff8e8e", "#ffb3b3", "#ffd6d6", "#ff0000", "#cc0000", "#990000"] // More intense red for +4
+
+    for (let i = 0; i < particleCount; i++) {
+      const particle = document.createElement("div")
+      particle.className = "fixed pointer-events-none rounded-full animate-particle-sparkle"
+      particle.style.cssText = `
+        left: ${centerX}px;
+        top: ${centerY}px;
+        width: ${Math.random() * 8 + 4}px;
+        height: ${Math.random() * 8 + 4}px;
+        background: ${colors[Math.floor(Math.random() * colors.length)]};
+        z-index: 10003;
+        --sparkle-x: ${(Math.random() - 0.5) * 120}px;
+        --sparkle-y: ${(Math.random() - 0.5) * 120}px;
+        --sparkle-x2: ${(Math.random() - 0.5) * 240}px;
+        --sparkle-y2: ${(Math.random() - 0.5) * 240}px;
+      `
+      document.body.appendChild(particle)
+
+      // Remove particle after animation
+      setTimeout(() => {
+        if (particle.parentNode) {
+          particle.parentNode.removeChild(particle)
+        }
+      }, 1200)
+    }
   }
 
   // Add penalty particle effect function
@@ -845,6 +893,18 @@ function UnoGameInner() {
       }
     }
 
+    // ADD THIS SECTION: Check for and animate penalty before the human draws
+    const penalty = gameEngine.getDrawPenalty()
+    console.log(`[DEBUG] Human draw penalty check - Penalty: ${penalty}`)
+
+    if (penalty > 0) {
+      console.log(`[ANIMATION] Triggering penalty animation for human player (${penalty} cards)`)
+      createPenaltyDrawingAnimation("0", penalty) // "0" is the human player's ID
+    } else {
+      console.log(`[DEBUG] No penalty found for human player`)
+    }
+    // END of new section
+
     playSound("draw")
     setPlayDelay(true)
 
@@ -856,7 +916,8 @@ function UnoGameInner() {
     const baseUserDrawDuration = Math.random() * 200 + 600 // 600ms to 800ms for user draws - reduced from 1000-1300ms
     const userDrawDuration = baseUserDrawDuration / uiSettings.animationSpeed
 
-    if (deckElement && userHandElement) {
+    // This part handles the animation for the *single* card the player is choosing to draw for their turn
+    if (deckElement && userHandElement && penalty === 0) { // Only animate the single draw if there is NO penalty
       const deckRect = deckElement.getBoundingClientRect()
       const handRect = userHandElement.getBoundingClientRect()
 
@@ -931,10 +992,15 @@ function UnoGameInner() {
 
       // Animation will be handled by the useEffect animation frame
       // Cards will be removed automatically when animation completes
+    } else {
+      // If there's a penalty, we've already triggered the penalty animation,
+      // so we can skip the single-card draw animation to avoid visual clutter.
+      console.log("Skipping single draw animation due to active penalty.")
     }
 
     // Delay game state update until animation completes with randomized timing
-    const userDrawUpdateDelay = userDrawDuration + Math.random() * 200 + 200 // Add 200-400ms buffer
+    // The delay should be long enough for the penalty animation to at least start
+    const userDrawUpdateDelay = (penalty > 0 ? 800 : userDrawDuration) + Math.random() * 200 + 200
     setTimeout(() => {
       const drawnCard = gameEngine.drawCard("player_0")
       console.log("[v0] User draw result, New current player:", gameEngine.getCurrentPlayer().name)
@@ -960,11 +1026,6 @@ function UnoGameInner() {
       setCurrentCard(gameData.currentCard)
       setDirection(gameData.direction)
       setCurrentPlayerId(gameEngine.getCurrentPlayer().id)
-
-      // Check for penalty drawing animation after human player's draw
-      setTimeout(() => {
-        checkAndAnimatePenaltyDrawing()
-      }, 100)
 
       setPlayDelay(false)
     }, userDrawUpdateDelay)
@@ -1020,6 +1081,17 @@ function UnoGameInner() {
       type: "perfect"
     })
 
+    // Show immediate feedback for Wild Draw Four cards
+    if (pendingWildCard.value === "Wild Draw Four") {
+      setTimeout(() => {
+        setFeedback({
+          message: "💀 Wild Draw Four played! Next player draws 4!",
+          type: "bad"
+        })
+        setTimeout(() => setFeedback(null), 3000)
+      }, 600) // Delay to show after color confirmation
+    }
+
     // Play the Wild card with the chosen color
     const success = gameEngine.playCard("player_0", pendingWildCard.id.toString(), color)
     console.log("[v0] Wild card play result:", success, "New current player:", gameEngine.getCurrentPlayer().name)
@@ -1030,11 +1102,6 @@ function UnoGameInner() {
       setCurrentCard(gameData.currentCard)
       setDirection(gameData.direction)
       setCurrentPlayerId(gameEngine.getCurrentPlayer().id)
-
-      // Check for penalty drawing animation after wild card play
-      setTimeout(() => {
-        checkAndAnimatePenaltyDrawing()
-      }, 100)
 
       if (gameEngine.isGameOver()) {
         const winner = gameEngine.getRoundWinner()
@@ -1077,11 +1144,6 @@ function UnoGameInner() {
     if (success) {
       playSound("special")
       setFeedback({ message: "🎯 UNO Challenge Successful! +2 cards penalty!", type: "great" })
-
-      // Check for penalty drawing animation after successful challenge
-      setTimeout(() => {
-        checkAndAnimatePenaltyDrawing()
-      }, 100)
     } else {
       setFeedback({ message: "❌ UNO Challenge Failed!", type: "bad" })
     }
@@ -1094,11 +1156,6 @@ function UnoGameInner() {
     if (success) {
       playSound("special")
       setFeedback({ message: "🎯 Wild Draw Four Challenge Successful! +4 cards penalty!", type: "great" })
-
-      // Check for penalty drawing animation after successful challenge
-      setTimeout(() => {
-        checkAndAnimatePenaltyDrawing()
-      }, 100)
     } else {
       playSound("draw")
       setFeedback({ message: "❌ Wild Draw Four Challenge Failed! You draw 6 cards!", type: "bad" })
@@ -1169,10 +1226,27 @@ function UnoGameInner() {
       isHuman: currentPlayer.isHuman,
       handSize: currentPlayer.getHandSize(),
       gamePhase: gameEngine.getPhase(),
-      isGameOver: gameEngine.isGameOver()
+      isGameOver: gameEngine.isGameOver(),
+      drawPenalty: gameEngine.getDrawPenalty()
     })
 
     setIsAITurnAnimating(true)
+
+    // ADD THIS SECTION: Check for and animate penalty before the AI acts
+    const penalty = gameEngine.getDrawPenalty()
+    const currentPlayerIndex = gameEngine.getPlayers().findIndex((p) => p.id === currentPlayer.id)
+
+    console.log(`[DEBUG] AI turn penalty check - Player: ${currentPlayer.name}, Penalty: ${penalty}, PlayerIndex: ${currentPlayerIndex}`)
+
+    if (penalty > 0 && currentPlayerIndex !== -1) {
+      console.log(`[ANIMATION] Triggering penalty animation for ${currentPlayer.name} (${penalty} cards)`)
+      createPenaltyDrawingAnimation(currentPlayerIndex.toString(), penalty)
+    } else if (penalty > 0) {
+      console.log(`[DEBUG] Penalty exists (${penalty}) but player index not found (${currentPlayerIndex})`)
+    } else {
+      console.log(`[DEBUG] No penalty found for ${currentPlayer.name}`)
+    }
+    // END of new section
 
     // Reduced AI thinking time (100 to 500ms) - much faster response
     const baseThinkingTime = Math.random() * 400 + 100
@@ -1312,11 +1386,6 @@ function UnoGameInner() {
               setDirection(gameData.direction)
               setCurrentPlayerId(gameEngine.getCurrentPlayer().id)
 
-              // Check for penalty drawing animation after AI turn
-              setTimeout(() => {
-                checkAndAnimatePenaltyDrawing()
-              }, 100)
-
               setIsAITurnAnimating(false)
               setAiThinking(null)
             }, drawDelay)
@@ -1326,6 +1395,21 @@ function UnoGameInner() {
             const aiSounds = ["play", "special"] as const
             const randomSound = aiSounds[Math.floor(Math.random() * aiSounds.length)]
             playSound(randomSound)
+
+            // Show immediate feedback for +2 and +4 cards played by AI
+            if (cardToPlay.value === "Draw Two") {
+              setFeedback({
+                message: `⚡ ${currentPlayer.name} played Draw Two! You must draw 2!`,
+                type: "great"
+              })
+              setTimeout(() => setFeedback(null), 3000)
+            } else if (cardToPlay.value === "Wild Draw Four") {
+              setFeedback({
+                message: `💀 ${currentPlayer.name} played Wild Draw Four! You must draw 4!`,
+                type: "bad"
+              })
+              setTimeout(() => setFeedback(null), 3000)
+            }
 
             const aiPlayerRect = aiPlayerElement.getBoundingClientRect()
             const centerRect = centerElement.getBoundingClientRect()
@@ -1389,6 +1473,18 @@ function UnoGameInner() {
               const success = gameEngine.playCard(currentPlayer.id, cardToPlay.id.toString(), chosenWildColor as UnoColor | undefined)
               console.log("AI play result:", success, "New current player:", gameEngine.getCurrentPlayer().name)
 
+              // Check if penalty was set by this play
+              const penaltyAfterPlay = gameEngine.getDrawPenalty()
+              console.log(`[DEBUG] Penalty after AI play: ${penaltyAfterPlay}`)
+
+              // Additional debugging for Wild Draw Four
+              if (cardToPlay.value === 'Wild Draw Four') {
+                console.log(`[DEBUG] Wild Draw Four played by ${currentPlayer.name}`)
+                console.log(`[DEBUG] Penalty before play: ${gameEngine.getDrawPenalty()}`)
+                console.log(`[DEBUG] Penalty after play: ${penaltyAfterPlay}`)
+                console.log(`[DEBUG] Next player: ${gameEngine.getCurrentPlayer().name}`)
+              }
+
               if (!success) {
                 console.log("[ERROR] AI action failed - this might cause infinite loop!")
                 // Force AI to draw a card if play fails to prevent infinite loop
@@ -1402,11 +1498,6 @@ function UnoGameInner() {
               setCurrentCard(gameData.currentCard)
               setDirection(gameData.direction)
               setCurrentPlayerId(gameEngine.getCurrentPlayer().id)
-
-              // Check for penalty drawing animation after AI turn
-              setTimeout(() => {
-                checkAndAnimatePenaltyDrawing()
-              }, 100)
 
               setIsAITurnAnimating(false)
               setAiThinking(null)
@@ -1460,11 +1551,6 @@ function UnoGameInner() {
             setDirection(gameData.direction)
             setCurrentPlayerId(gameEngine.getCurrentPlayer().id)
 
-            // Check for penalty drawing animation after AI turn
-            setTimeout(() => {
-              checkAndAnimatePenaltyDrawing()
-            }, 100)
-
             setIsAITurnAnimating(false)
             setAiThinking(null)
           }
@@ -1516,11 +1602,6 @@ function UnoGameInner() {
           setCurrentCard(gameData.currentCard)
           setDirection(gameData.direction)
           setCurrentPlayerId(gameEngine.getCurrentPlayer().id)
-
-          // Check for penalty drawing animation after AI turn
-          setTimeout(() => {
-            checkAndAnimatePenaltyDrawing()
-          }, 100)
 
           setIsAITurnAnimating(false)
           setAiThinking(null)
@@ -1941,6 +2022,45 @@ function UnoGameInner() {
     }
   }
 
+  // Create action card animation for +2 and +4 cards (when played)
+  const createActionCardAnimation = (playerId: string, penaltyCount: number, cardType: string) => {
+    const playerElement = document.querySelector(`[data-player="${playerId}"]`)
+
+    if (!playerElement) {
+      console.log("Action card animation: DOM elements not found")
+      return
+    }
+
+    const playerRect = playerElement.getBoundingClientRect()
+
+    // Check if this is the human player (index 0)
+    const isHumanPlayer = playerId === "0"
+
+    // Show action card feedback with different messages for human vs AI
+    const actionMessages = {
+      'Draw Two': isHumanPlayer
+        ? ["⚡ Draw Two played! Next player draws 2!", "💥 +2 Strike! Next player takes 2 cards!", "🔥 Draw Two effect! 2 cards penalty!"]
+        : ["⚡ Draw Two played! You must draw 2!", "💥 +2 Strike! You take 2 cards!", "🔥 Draw Two effect! 2 cards penalty!"],
+      'Wild Draw Four': isHumanPlayer
+        ? ["💀 Wild Draw Four played! Next player draws 4!", "💣 +4 Explosion! Next player takes 4 cards!", "🔥 Wild Draw Four! 4 cards penalty!"]
+        : ["💀 Wild Draw Four played! You must draw 4!", "💣 +4 Explosion! You take 4 cards!", "🔥 Wild Draw Four! 4 cards penalty!"]
+    }
+
+    const messages = actionMessages[cardType as keyof typeof actionMessages] || ["📚 Action card played!"]
+    const randomMessage = messages[Math.floor(Math.random() * messages.length)]
+
+    setFeedback({
+      message: randomMessage,
+      type: cardType === 'Wild Draw Four' ? "bad" : "great"
+    })
+    setTimeout(() => setFeedback(null), 3000)
+
+    // Add action card particle effects
+    if (uiSettings.visualEffects) {
+      createActionCardParticleEffect(playerRect, penaltyCount, cardType)
+    }
+  }
+
   // Create penalty drawing animation for +2 and +4 cards
   const createPenaltyDrawingAnimation = (playerId: string, penaltyCount: number) => {
     const deckElement = document.querySelector("[data-deck]")
@@ -2027,22 +2147,9 @@ function UnoGameInner() {
     setTimeout(() => setFeedback(null), 4000)
   }
 
-  // Check for penalty drawing after game state updates
-  const checkAndAnimatePenaltyDrawing = () => {
-    if (!gameEngine) return
-
-    const currentPlayer = gameEngine.getCurrentPlayer()
-    const drawPenalty = gameEngine.getDrawPenalty()
-
-    // Animate penalty drawing for any player (including human)
-    if (drawPenalty > 0) {
-      const playerIndex = gameEngine.getPlayers().findIndex(p => p.id === currentPlayer.id)
-      if (playerIndex >= 0) { // Include human player (index 0)
-        console.log(`Creating penalty animation for ${currentPlayer.name}: ${drawPenalty} cards`)
-        createPenaltyDrawingAnimation(playerIndex.toString(), drawPenalty)
-      }
-    }
-  }
+  // ❌ REMOVED: checkAndAnimatePenaltyDrawing function
+  // This function is no longer needed as penalties are now handled proactively
+  // at the beginning of each player's turn in playAITurn() and drawCard()
 
   if (showMainMenu) {
     return <MainMenu onStartGame={startGame} />
