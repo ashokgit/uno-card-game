@@ -1,6 +1,7 @@
 import { UnoPlayer, UnoCard, UnoColor } from '@/lib/uno-engine'
 import { llmManager } from './manager'
 import { AIPlayer, LLMProvider } from './types'
+import { UNO_PROMPTS } from './config'
 
 export interface LLMGameContext {
     currentPlayer: {
@@ -187,93 +188,88 @@ export class LLMAIStrategy {
     }
 
     private buildSystemPrompt(): string {
-        return `You are an AI player in a UNO game with a specific personality. You have multiple playable cards and need to choose the best strategic move.
-
-Your Personality: ${this.aiPlayer.personality}
-
-UNO Rules:
-- Play a card that matches the top card's color, number, or symbol
-- Action cards: Skip (next player), Reverse (direction), Draw Two (+2 cards)
-- Wild cards: Can be played anytime, choose new color
-- Wild Draw Four: Only if no matching cards, +4 cards to next player
-- Goal: Get rid of all cards first
-
-Consider your personality when making decisions. Be strategic and think about:
-- Which card will help you win fastest?
-- How can you disrupt other players?
-- What's the best color to choose for wild cards?
-
-Respond with ONLY a JSON object:
-{
-  "action": "play",
-  "card": "card_id",
-  "reasoning": "brief explanation of your strategic decision"
-}`
+        return UNO_PROMPTS.system.replace('{personality}', this.aiPlayer.personality)
     }
 
     private buildWildColorSystemPrompt(): string {
-        return `You are an AI player in a UNO game who just played a Wild card. You need to choose the best color strategically.
-
-Your Personality: ${this.aiPlayer.personality}
-
-Choose a color that will help you win. Consider:
-- Which color do you have the most of?
-- Which color will be hardest for opponents to match?
-- What's your personality - aggressive, defensive, strategic?
-
-Respond with ONLY a JSON object:
-{
-  "action": "wild_color",
-  "color": "red|blue|green|yellow",
-  "reasoning": "brief explanation of your color choice"
-}`
+        return UNO_PROMPTS.wildColor.replace('{personality}', this.aiPlayer.personality)
     }
 
     private buildGamePrompt(context: LLMGameContext): string {
-        return `
-Current Game State:
-- Your hand: ${context.currentPlayer.hand.map(card => `${card.color} ${card.value}`).join(', ')}
-- Top card: ${context.topCard.color} ${context.topCard.value}
-- Playable cards: ${context.playableCards.map(card => `${card.color} ${card.value}`).join(', ')}
-- Other players: ${context.otherPlayers.map(p => `${p.name} (${p.handSize} cards)`).join(', ')}
-- Recent moves: ${context.recentMoves.slice(-3).map(m => `${m.player}: ${m.action}${m.card ? ` ${m.card}` : ''}`).join(', ') || 'None'}
+        // Convert card objects to structured JSON for the LLM
+        const handAsJSON = JSON.stringify(context.currentPlayer.hand.map(c => ({
+            id: c.id,
+            color: c.color,
+            value: c.value
+        })))
 
-Choose the best strategic move based on your personality.
-`
+        const playableAsJSON = JSON.stringify(context.playableCards.map(c => ({
+            id: c.id,
+            color: c.color,
+            value: c.value
+        })))
+
+        const topCardAsJSON = JSON.stringify({
+            color: context.topCard.color,
+            value: context.topCard.value
+        })
+
+        const otherPlayersAsJSON = JSON.stringify(context.otherPlayers.map(p => ({
+            name: p.name,
+            handSize: p.handSize,
+            isActive: p.isActive
+        })))
+
+        const recentMovesAsJSON = JSON.stringify(context.recentMoves.slice(-3).map(m => ({
+            player: m.player,
+            action: m.action,
+            card: m.card || null,
+            timestamp: m.timestamp
+        })))
+
+        return UNO_PROMPTS.system
+            .replace('{personality}', this.aiPlayer.personality)
+            .replace('{hand}', handAsJSON)
+            .replace('{topCard}', topCardAsJSON)
+            .replace('{playableCards}', playableAsJSON)
+            .replace('{otherPlayers}', otherPlayersAsJSON)
+            .replace('{recentMoves}', recentMovesAsJSON)
     }
 
     private buildWildColorPrompt(context: LLMGameContext): string {
-        return `
-Your hand: ${context.currentPlayer.hand.map(card => `${card.color} ${card.value}`).join(', ')}
-Other players: ${context.otherPlayers.map(p => `${p.name} (${p.handSize} cards)`).join(', ')}
-Recent moves: ${context.recentMoves.slice(-3).map(m => `${m.player}: ${m.action}${m.card ? ` ${m.card}` : ''}`).join(', ') || 'None'}
+        // Convert card objects to structured JSON for the LLM
+        const handAsJSON = JSON.stringify(context.currentPlayer.hand.map(c => ({
+            id: c.id,
+            color: c.color,
+            value: c.value
+        })))
 
-Choose the best color strategically.
-`
+        const otherPlayersAsJSON = JSON.stringify(context.otherPlayers.map(p => ({
+            name: p.name,
+            handSize: p.handSize,
+            isActive: p.isActive
+        })))
+
+        const recentMovesAsJSON = JSON.stringify(context.recentMoves.slice(-3).map(m => ({
+            player: m.player,
+            action: m.action,
+            card: m.card || null,
+            timestamp: m.timestamp
+        })))
+
+        return UNO_PROMPTS.wildColor
+            .replace('{personality}', this.aiPlayer.personality)
+            .replace('{hand}', handAsJSON)
+            .replace('{otherPlayers}', otherPlayersAsJSON)
+            .replace('{recentMoves}', recentMovesAsJSON)
     }
 
     private parseLLMResponse(response: string, playableCards: UnoCard[]): UnoCard | null {
         try {
-            // Clean the response - remove markdown code blocks if present
-            let cleanResponse = response.trim()
-
-            // Remove markdown code blocks (```json ... ```)
-            if (cleanResponse.startsWith('```json')) {
-                cleanResponse = cleanResponse.replace(/^```json\s*/, '').replace(/\s*```$/, '')
-            } else if (cleanResponse.startsWith('```')) {
-                cleanResponse = cleanResponse.replace(/^```\s*/, '').replace(/\s*```$/, '')
-            }
-
-            // Try to extract JSON from the response if it's not pure JSON
-            const jsonMatch = cleanResponse.match(/\{[\s\S]*\}/)
-            if (jsonMatch) {
-                cleanResponse = jsonMatch[0]
-            }
-
-            const parsed = JSON.parse(cleanResponse)
+            const parsed = JSON.parse(response)
 
             if (parsed.action === 'play' && parsed.card) {
-                // Find the card by ID
+                // Find the card by ID (now more reliable with structured data)
                 const selectedCard = playableCards.find(card => card.id === parsed.card)
 
                 if (selectedCard) {
@@ -297,23 +293,7 @@ Choose the best color strategically.
 
     private parseWildColorResponse(response: string): UnoColor | null {
         try {
-            // Clean the response - remove markdown code blocks if present
-            let cleanResponse = response.trim()
-
-            // Remove markdown code blocks (```json ... ```)
-            if (cleanResponse.startsWith('```json')) {
-                cleanResponse = cleanResponse.replace(/^```json\s*/, '').replace(/\s*```$/, '')
-            } else if (cleanResponse.startsWith('```')) {
-                cleanResponse = cleanResponse.replace(/^```\s*/, '').replace(/\s*```$/, '')
-            }
-
-            // Try to extract JSON from the response if it's not pure JSON
-            const jsonMatch = cleanResponse.match(/\{[\s\S]*\}/)
-            if (jsonMatch) {
-                cleanResponse = jsonMatch[0]
-            }
-
-            const parsed = JSON.parse(cleanResponse)
+            const parsed = JSON.parse(response)
 
             if (parsed.action === 'wild_color' && parsed.color) {
                 const validColors: UnoColor[] = ['red', 'blue', 'green', 'yellow']
@@ -326,7 +306,6 @@ Choose the best color strategically.
             return null
         } catch (error) {
             console.error('Failed to parse LLM wild color response:', error)
-            console.error('Raw response:', response)
             return null
         }
     }

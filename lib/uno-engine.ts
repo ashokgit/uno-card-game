@@ -21,18 +21,18 @@ export interface UnoRules {
   stackDrawTwo: boolean
   stackDrawFour: boolean
   mustPlayIfDrawable: boolean
-  allowDrawWhenPlayable: boolean   // NEW: official = true
+  allowDrawWhenPlayable: boolean   // NEW: official = true
   targetScore: number
   debugMode: boolean
   aiDifficulty: 'easy' | 'normal' | 'hard' | 'expert'
-  enableJumpIn: boolean      // Allow players to play identical cards out of turn
-  enableSevenZero: boolean   // Enable 7-0 house rules (hand swapping and rotation)
-  enableSwapHands: boolean   // Enable hand swapping house rule
-  showDiscardPile: boolean   // If true, expose and allow viewing the full discard pile
-  deadlockResolution: 'end_round' | 'force_reshuffle'  // How to handle deadlock scenarios
-  wildCardSkip: number       // Number of players to skip when Wild card is played (1 = next player, 2 = skip next player, default = 2)
+  enableJumpIn: boolean      // Allow players to play identical cards out of turn
+  enableSevenZero: boolean   // Enable 7-0 house rules (hand swapping and rotation)
+  enableSwapHands: boolean   // Enable hand swapping house rule
+  showDiscardPile: boolean   // If true, expose and allow viewing the full discard pile
+  deadlockResolution: 'end_round' | 'force_reshuffle'  // How to handle deadlock scenarios
+  wildCardSkip: number       // Number of players to skip when Wild card is played (1 = next player, 2 = skip next player, default = 2)
   unoChallengeWindow: number // Time window in milliseconds to challenge UNO calls (default = 2000)
-  maxGameTime: number        // Maximum game time in minutes before auto-ending (0 = no limit, default = 0)
+  maxGameTime: number        // Maximum game time in minutes before auto-ending (0 = no limit, default = 0)
   enableUnoChallenges: boolean // Whether to allow UNO challenges (default = true)
 }
 
@@ -40,19 +40,19 @@ export const DEFAULT_RULES: UnoRules = {
   stackDrawTwo: false, // Official rules: no stacking
   stackDrawFour: false, // Official rules: no stacking
   mustPlayIfDrawable: false, // Official rules: player chooses
-  allowDrawWhenPlayable: true,     // official behavior
+  allowDrawWhenPlayable: true,     // official behavior
   targetScore: 500,
   debugMode: false,
   aiDifficulty: 'expert',
   enableJumpIn: false,
   enableSevenZero: false,
   enableSwapHands: false,
-  showDiscardPile: false,  // Official: only top card is relevant, but can enable for full visibility
-  deadlockResolution: 'end_round',  // Default: end round when deadlock detected
-  wildCardSkip: 2,  // Default: skip next player (standard UNO behavior)
-  unoChallengeWindow: 2000,  // Default: 2 seconds to challenge UNO calls
-  maxGameTime: 0,  // Default: no time limit
-  enableUnoChallenges: true,  // Default: allow UNO challenges
+  showDiscardPile: false,  // Official: only top card is relevant, but can enable for full visibility
+  deadlockResolution: 'end_round',  // Default: end round when deadlock detected
+  wildCardSkip: 2,  // Default: skip next player (standard UNO behavior)
+  unoChallengeWindow: 2000,  // Default: 2 seconds to challenge UNO calls
+  maxGameTime: 0,  // Default: no time limit
+  enableUnoChallenges: true,  // Default: allow UNO challenges
 }
 
 // Event hooks for UI and multiplayer integration
@@ -79,8 +79,8 @@ export interface IAIGameState {
 }
 
 export interface IAIStrategy {
-  chooseCard(playableCards: UnoCard[], gameState: IAIGameState, player: UnoPlayer): UnoCard | null | Promise<UnoCard | null>
-  chooseWildColor(hand: UnoCard[], gameState: IAIGameState, player: UnoPlayer): UnoColor | Promise<UnoColor>
+  chooseCard(playableCards: UnoCard[], gameState: IAIGameState, player: UnoPlayer): Promise<UnoCard | null>
+  chooseWildColor(hand: UnoCard[], gameState: IAIGameState, player: UnoPlayer): Promise<UnoColor>
 }
 
 // Game State Tracker for Advanced AI
@@ -272,7 +272,7 @@ export class ExpertAIStrategy implements IAIStrategy {
     this.stateTracker = stateTracker
   }
 
-  chooseCard(playableCards: UnoCard[], gameState: IAIGameState, player: UnoPlayer): UnoCard | null {
+  async chooseCard(playableCards: UnoCard[], gameState: IAIGameState, player: UnoPlayer): Promise<UnoCard | null> {
     if (playableCards.length === 0) return null
 
     // Score each playable card
@@ -285,7 +285,7 @@ export class ExpertAIStrategy implements IAIStrategy {
     return scoredMoves[0].card
   }
 
-  chooseWildColor(hand: UnoCard[], gameState: IAIGameState, player: UnoPlayer): UnoColor {
+  async chooseWildColor(hand: UnoCard[], gameState: IAIGameState, player: UnoPlayer): Promise<UnoColor> {
     const colors: UnoColor[] = ['red', 'blue', 'green', 'yellow']
     const colorScores = new Map<UnoColor, number>()
 
@@ -880,7 +880,7 @@ export class UnoGame {
   private readonly DEADLOCK_CYCLE_THRESHOLD = 3 // Number of times a state must repeat to indicate deadlock
   // Enhanced AI Strategy System
   private stateTracker: GameStateTracker
-  private enhancedAIStrategy: ExpertAIStrategy | null = null
+  private enhancedAIStrategy: IAIStrategy | null = null
   // Pause functionality
   private isPaused: boolean = false
   private previousPhase: GamePhase | null = null
@@ -1015,6 +1015,13 @@ export class UnoGame {
     this.startGame()
   }
 
+  // Public method to set enhanced AI strategy (for LLM integration)
+  public setEnhancedAIStrategy(strategy: IAIStrategy): void {
+    console.log(`🔧 Setting enhanced AI strategy: ${strategy.constructor.name}`)
+    this.enhancedAIStrategy = strategy
+    console.log(`   ✅ Enhanced AI strategy set successfully`)
+  }
+
   private startGame(): void {
     // Reset game state
     this.wildDrawFourPlayer = null
@@ -1140,7 +1147,7 @@ export class UnoGame {
    * @param isUnoCall - Whether the player is calling UNO with this play (for smoother UX)
    * @returns true if the card was played successfully
    */
-  playCard(playerId: string, cardId: string, chosenWildColor?: UnoColor, isUnoCall: boolean = false): boolean {
+  async playCard(playerId: string, cardId: string, chosenWildColor?: UnoColor, isUnoCall: boolean = false): Promise<boolean> {
     this.debugLog('PLAY', `Player ${playerId} attempting to play card ${cardId}`)
     this.logGameState('before play')
 
@@ -1182,7 +1189,7 @@ export class UnoGame {
     this._handleUnoState(player!, isUnoCall)
 
     // Handle special card effects FIRST (even if this is the winning card)
-    this.handleCardEffect(playedCard, chosenWildColor)
+    await this.handleCardEffect(playedCard, chosenWildColor)
 
     // Check for win AFTER applying effects
     if (player!.isEmpty()) {
@@ -1330,7 +1337,7 @@ export class UnoGame {
     }
   }
 
-  private handleCardEffect(card: UnoCard, chosenWildColor?: UnoColor): void {
+  private async handleCardEffect(card: UnoCard, chosenWildColor?: UnoColor): Promise<void> {
     this.debugLog('EFFECT', `Handling card effect for ${card.color} ${card.value}`)
     let effect = ""
 
@@ -1372,7 +1379,7 @@ export class UnoGame {
         break
 
       case "Wild":
-        this.wildColor = chosenWildColor || this.chooseWildColorForCurrentPlayer()
+        this.wildColor = chosenWildColor || await this.chooseWildColorForCurrentPlayer()
         this.lastActionCard = null // Reset action card tracking
         // Apply wild card skip effect based on settings
         if (this.rules.wildCardSkip > 1) {
@@ -1396,7 +1403,7 @@ export class UnoGame {
           // Track who played the Wild Draw Four card
           this.wildDrawFourPlayer = this.getCurrentPlayer()
         }
-        this.wildColor = chosenWildColor || this.chooseWildColorForCurrentPlayer()
+        this.wildColor = chosenWildColor || await this.chooseWildColorForCurrentPlayer()
         this.skipNext = true
         this.lastActionCard = card
         break
@@ -2229,9 +2236,9 @@ export class UnoGame {
     console.log('\n=== PLAYER DETAILS ===')
     stats.playerDetails.forEach(player => {
       console.log(`${player.name}: ${player.handSize} cards`)
-      console.log(`  Cards: ${player.cards.join(', ')}`)
-      console.log(`  Playable: ${player.playableCards.join(', ')}`)
-      console.log(`  Score: ${player.score}`)
+      console.log(`  Cards: ${player.cards.join(', ')}`)
+      console.log(`  Playable: ${player.playableCards.join(', ')}`)
+      console.log(`  Score: ${player.score}`)
     })
 
     console.log('\n=== GAME STATISTICS ===')
@@ -2692,7 +2699,7 @@ export class UnoGame {
   }
 
   // Pure AI decision function (for testing/simulation)
-  decideAITurn(): { action: 'play' | 'draw'; cardId?: string; chosenColor?: UnoColor } | null {
+  async decideAITurn(): Promise<{ action: 'play' | 'draw'; cardId?: string; chosenColor?: UnoColor } | null> {
     const currentPlayer = this.getCurrentPlayer()
     const topCard = this.getTopCard()
 
@@ -2706,11 +2713,11 @@ export class UnoGame {
     // End of new logic
 
     // Try to play a card (this logic is now only reached if there's no penalty)
-    const cardToPlay = this.chooseAICard(currentPlayer, topCard)
+    const cardToPlay = await this.chooseAICard(currentPlayer, topCard)
     if (cardToPlay) {
       let chosenColor: UnoColor | undefined
       if (cardToPlay.isWildCard()) {
-        chosenColor = currentPlayer.chooseWildColor()
+        chosenColor = await this.chooseWildColorForCurrentPlayer()
       }
       return { action: 'play', cardId: cardToPlay.id, chosenColor }
     }
@@ -2720,12 +2727,12 @@ export class UnoGame {
   }
 
   // Apply AI decision (pure function)
-  applyAIAction(action: { action: 'play' | 'draw'; cardId?: string; chosenColor?: UnoColor }): boolean {
+  async applyAIAction(action: { action: 'play' | 'draw'; cardId?: string; chosenColor?: UnoColor }): Promise<boolean> {
     if (action.action === 'play' && action.cardId) {
       const currentPlayer = this.getCurrentPlayer()
       // Check if this play will leave the AI with exactly one card (should call UNO)
       const willHaveOneCard = currentPlayer.getHandSize() === 2
-      return this.playCard(this.getCurrentPlayer().id, action.cardId, action.chosenColor, willHaveOneCard)
+      return await this.playCard(this.getCurrentPlayer().id, action.cardId, action.chosenColor, willHaveOneCard)
     } else if (action.action === 'draw') {
       return this.drawCard(this.getCurrentPlayer().id) !== null
     }
@@ -2747,10 +2754,10 @@ export class UnoGame {
     return Math.floor(baseDelay * randomFactor)
   }
 
-  private executeAITurn(currentPlayer: UnoPlayer): void {
+  private async executeAITurn(currentPlayer: UnoPlayer): Promise<void> {
     this.debugLog('AI', `${currentPlayer.name} making AI decision...`)
 
-    const decision = this.decideAITurn()
+    const decision = await this.decideAITurn()
     if (!decision) {
       this.debugLog('AI', `${currentPlayer.name} could not decide on action`)
       return
@@ -2761,7 +2768,7 @@ export class UnoGame {
       const willHaveOneCard = currentPlayer.getHandSize() === 2
 
       // CRITICAL FIX: Always call UNO for AI players when they'll have one card
-      const success = this.playCard(currentPlayer.id, decision.cardId, decision.chosenColor, willHaveOneCard)
+      const success = await this.playCard(currentPlayer.id, decision.cardId, decision.chosenColor, willHaveOneCard)
       this.debugLog('AI', `${currentPlayer.name} action result: ${success}`)
     } else if (decision.action === 'draw') {
       this.drawCard(currentPlayer.id)
@@ -2769,7 +2776,7 @@ export class UnoGame {
   }
 
   // Enhanced AI card selection based on difficulty
-  private chooseAICard(player: UnoPlayer, topCard: UnoCard): UnoCard | null {
+  private async chooseAICard(player: UnoPlayer, topCard: UnoCard): Promise<UnoCard | null> {
     const playableCards = player.getPlayableCards(topCard, this.wildColor || undefined)
     this.debugLog('AI', `${player.name} has ${playableCards.length} playable cards:`,
       playableCards.map(c => `${c.color} ${c.value}`))
@@ -2794,7 +2801,7 @@ export class UnoGame {
         this.debugLog('AI', `${player.name} using hard strategy`)
         break
       case 'expert':
-        selectedCard = this.enhancedExpertAIStrategy(playableCards, topCard, player)
+        selectedCard = await this.enhancedExpertAIStrategy(playableCards, topCard, player)
         this.debugLog('AI', `${player.name} using enhanced expert strategy`)
         break
       default:
@@ -2909,8 +2916,12 @@ export class UnoGame {
   }
 
   // Enhanced Expert AI Strategy using the new strategy system
-  private enhancedExpertAIStrategy(playableCards: UnoCard[], topCard: UnoCard, player: UnoPlayer): UnoCard | null {
+  private async enhancedExpertAIStrategy(playableCards: UnoCard[], topCard: UnoCard, player: UnoPlayer): Promise<UnoCard | null> {
+    console.log(`🔍 enhancedExpertAIStrategy called for ${player.name}`)
+    console.log(`   Strategy type: ${this.enhancedAIStrategy?.constructor.name || 'null'}`)
+
     if (!this.enhancedAIStrategy) {
+      console.log(`   ⚠️ No enhanced AI strategy available, using fallback`)
       // Fallback to original expert strategy if enhanced strategy is not available
       return this.expertAIStrategy(playableCards, topCard, player)
     }
@@ -2929,12 +2940,15 @@ export class UnoGame {
       direction: this.direction,
     }
 
+    console.log(`   📞 Calling enhancedAIStrategy.chooseCard for ${player.name}`)
     // Use the enhanced AI strategy
-    return this.enhancedAIStrategy.chooseCard(playableCards, gameStateForAI, player)
+    const result = await this.enhancedAIStrategy.chooseCard(playableCards, gameStateForAI, player)
+    console.log(`   ✅ enhancedAIStrategy.chooseCard returned: ${result ? `${result.color} ${result.value}` : 'null'}`)
+    return result
   }
 
   // Enhanced wild color selection for AI players
-  private chooseWildColorForCurrentPlayer(): UnoColor {
+  private async chooseWildColorForCurrentPlayer(): Promise<UnoColor> {
     const currentPlayer = this.getCurrentPlayer()
 
     // Use enhanced AI strategy for expert difficulty AI players
@@ -2951,7 +2965,7 @@ export class UnoGame {
         wildColor: this.wildColor,
         direction: this.direction,
       }
-      return this.enhancedAIStrategy.chooseWildColor(currentPlayer.getHand(), gameStateForAI, currentPlayer)
+      return await this.enhancedAIStrategy.chooseWildColor(currentPlayer.getHand(), gameStateForAI, currentPlayer)
     }
 
     // Fallback to original player method

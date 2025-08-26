@@ -25,6 +25,7 @@ import {
   Home,
 } from "lucide-react"
 import { UnoGame as GameEngine, type UnoCard as EngineCard, type GameDirection, type UnoColor, type UnoRules } from "@/lib/uno-engine"
+import { createLLMEnabledGame } from "@/lib/llm/game-integration"
 import { GameLog } from "@/components/game-log"
 import { MainMenu } from "@/components/main-menu"
 import { ColorPicker } from "@/components/color-picker"
@@ -40,6 +41,11 @@ interface Player {
   position: { top: string; left: string; transform?: string; position?: string }
   cards: GameCard[]
   score: number
+  // LLM-specific properties
+  isLLMEnabled?: boolean
+  llmProviderName?: string
+  llmProviderId?: string | null
+  personality?: string
 }
 
 interface GameCard {
@@ -176,10 +182,10 @@ function UnoGameInner() {
     }
   }, [uiSettings.backgroundMusic, isMusicPlaying])
 
-  // Initialize game engine with event handlers
+  // Initialize game engine with event handlers and LLM integration
   const initializeGameEngine = (playerNames: string[], rules: UnoRules) => {
-    const engine = new GameEngine(playerNames, 0, rules, {
-      onRoundEnd: (winner, points, scores) => {
+    const events = {
+      onRoundEnd: (winner: any, points: number, scores: Map<string, number>) => {
         console.log(`🏆 Round ended! ${winner.name} earned ${points} points`)
         // Update UI immediately when round ends
         const gameData = convertToUIFormat()
@@ -188,7 +194,7 @@ function UnoGameInner() {
         setDirection(gameData.direction)
         setCurrentPlayerId(engine.getCurrentPlayer().id)
       },
-      onGameEnd: (winner, finalScores) => {
+      onGameEnd: (winner: any, finalScores: Map<string, number>) => {
         console.log(`🎉 Game ended! ${winner.name} wins with ${winner.getScore()} points`)
         // Update UI immediately when game ends
         const gameData = convertToUIFormat()
@@ -197,7 +203,18 @@ function UnoGameInner() {
         setDirection(gameData.direction)
         setCurrentPlayerId(engine.getCurrentPlayer().id)
       }
-    }, true) // Skip initial deal for animated distribution
+    }
+
+    // Create LLM-enabled game engine
+    const engine = createLLMEnabledGame(
+      playerNames,
+      0, // human player index
+      rules,
+      events,
+      true, // skip initial deal for animated distribution
+      gameSettings
+    )
+
     setGameEngine(engine)
   }
 
@@ -206,7 +223,10 @@ function UnoGameInner() {
     const activeAIPlayers = gameSettings.aiPlayers.filter(player => player.isActive)
 
     // Create player names array: "You" + active AI players
-    const playerNames = ["You", ...activeAIPlayers.map(player => player.name)].slice(0, playerCount)
+    let playerNames = ["You", ...activeAIPlayers.map(player => player.name)]
+
+    // Calculate the actual player count needed (human + active AI players)
+    const actualPlayerCount = 1 + activeAIPlayers.length
 
     // If we don't have enough active AI players, fill with default names
     if (playerNames.length < playerCount) {
@@ -215,6 +235,13 @@ function UnoGameInner() {
         playerNames.push(defaultNames[i - 1] || `AI-${i}`)
       }
     }
+
+    // Use the actual player count instead of the parameter to ensure all active AI players are included
+    playerNames = playerNames.slice(0, Math.max(actualPlayerCount, playerCount))
+
+    console.log('🎮 Starting game with players:', playerNames)
+    console.log('🤖 Active AI players from settings:', activeAIPlayers.map(p => p.name))
+    console.log('🎯 LLM players:', activeAIPlayers.filter(p => p.llmProviderId).map(p => p.name))
 
     initializeGameEngine(playerNames, rules)
     setShowMainMenu(false)
@@ -475,6 +502,27 @@ function UnoGameInner() {
     const nextPlayer = gameEngine.getNextPlayer()
 
     const players: Player[] = enginePlayers.map((player, index) => {
+      // Get LLM information from game settings for AI players (index > 0)
+      let llmInfo = {
+        isLLMEnabled: false,
+        llmProviderName: undefined as string | undefined,
+        llmProviderId: null as string | null,
+        personality: undefined as string | undefined
+      }
+
+      if (index > 0) {
+        const aiPlayer = gameSettings.aiPlayers.find(p => p.name === player.name)
+        if (aiPlayer && aiPlayer.llmProviderId) {
+          const provider = gameSettings.llmProviders.find(p => p.id === aiPlayer.llmProviderId)
+          llmInfo = {
+            isLLMEnabled: true,
+            llmProviderName: provider?.name || 'Unknown',
+            llmProviderId: aiPlayer.llmProviderId,
+            personality: aiPlayer.personality
+          }
+        }
+      }
+
       const playerData = {
         id: index,
         name: player.name,
@@ -496,6 +544,8 @@ function UnoGameInner() {
         position: getPlayerPosition(index),
         cards: index === 0 ? (player.getHand() || []).map(convertEngineCard) : [],
         score: player.getScore(),
+        // LLM-specific properties
+        ...llmInfo
       }
 
       return playerData
@@ -592,7 +642,7 @@ function UnoGameInner() {
     }
   }
 
-  const playCard = (cardToPlay: GameCard) => {
+  const playCard = async (cardToPlay: GameCard) => {
     if (!gameEngine || !currentCard || !canPlayCard(cardToPlay, currentCard) || playDelay || !players[0]?.isActive)
       return
 
@@ -662,8 +712,8 @@ function UnoGameInner() {
         console.log("Animation limit reached, skipping card throw animation")
         // Still use the randomized timing even when skipping animation
         const userGameUpdateDelay = userThrowDuration + Math.random() * 200 + 200
-        setTimeout(() => {
-          const success = gameEngine.playCard("player_0", cardToPlay.id.toString())
+        setTimeout(async () => {
+          const success = await gameEngine.playCard("player_0", cardToPlay.id.toString())
           console.log("[v0] User card play result:", success, "New current player:", gameEngine.getCurrentPlayer().name)
 
           if (success) {
@@ -738,7 +788,7 @@ function UnoGameInner() {
     console.log("  - Top card:", currentCard ? `${currentCard.color} ${currentCard.value}` : 'None')
     console.log("  - Wild color:", gameEngine.getWildColor())
 
-    const success = gameEngine.playCard("player_0", cardToPlay.id.toString())
+    const success = await gameEngine.playCard("player_0", cardToPlay.id.toString())
     console.log("[v0] User card play result:", success, "New current player:", gameEngine.getCurrentPlayer().name)
 
     if (!success) {
@@ -1109,7 +1159,7 @@ function UnoGameInner() {
     setTimeout(() => setFeedback(null), 5000)
   }
 
-  const handleColorSelect = (color: 'red' | 'blue' | 'green' | 'yellow') => {
+  const handleColorSelect = async (color: 'red' | 'blue' | 'green' | 'yellow') => {
     if (!gameEngine || !pendingWildCard) return
 
     console.log("[DEBUG] Color selected:", color)
@@ -1168,7 +1218,7 @@ function UnoGameInner() {
     }
 
     // Play the Wild card with the chosen color
-    const success = gameEngine.playCard("player_0", pendingWildCard.id.toString(), color)
+    const success = await gameEngine.playCard("player_0", pendingWildCard.id.toString(), color)
     console.log("[v0] Wild card play result:", success, "New current player:", gameEngine.getCurrentPlayer().name)
 
     if (success) {
@@ -1328,6 +1378,18 @@ function UnoGameInner() {
     const isHumanTurn = currentPlayer.name === "You" || currentPlayer.id === "player_0"
     console.log("[DEBUG] Turn detection - isHumanTurn:", isHumanTurn)
 
+    // Update UI state when current player changes
+    const gameData = convertToUIFormat()
+    setPlayers(gameData.players)
+    setCurrentCard(gameData.currentCard)
+    setDirection(gameData.direction)
+
+    // Update playable cards when it's the human player's turn
+    if (isHumanTurn && currentCard) {
+      console.log("[DEBUG] Human turn detected - updating playable cards")
+      updatePlayableCards()
+    }
+
     if (!isHumanTurn && !playDelay && !isAITurnAnimating) {
       console.log("[v0] AI turn starting for:", currentPlayer.name)
       setAiThinking({ playerName: currentPlayer.name, startTime: Date.now() })
@@ -1383,7 +1445,7 @@ function UnoGameInner() {
     }
   }, [gameEngine])
 
-  const playAITurn = () => {
+  const playAITurn = async () => {
     if (!gameEngine || isAITurnAnimating || isGamePaused) return
 
     const currentPlayer = gameEngine.getCurrentPlayer()
@@ -1421,7 +1483,7 @@ function UnoGameInner() {
     console.log(`AI ${currentPlayer.name} thinking for ${thinkingTime.toFixed(0)}ms`)
 
     // Execute AI turn after thinking time
-    setTimeout(() => {
+    setTimeout(async () => {
       try {
         console.log("[DEBUG] AI turn execution starting for:", currentPlayer.name)
 
@@ -1632,7 +1694,7 @@ function UnoGameInner() {
 
             // Reduced throw delay (100-200ms)
             const throwDelay = throwDuration + Math.random() * 100 + 100
-            setTimeout(() => {
+            setTimeout(async () => {
               // For AI playing, we need to call playCard directly with the chosen card
 
               // Add debugging for Wild Draw Four plays
@@ -1690,7 +1752,7 @@ function UnoGameInner() {
             console.log("AI turn fallback - no animation")
 
             // Use synchronous AI decision instead of async playAITurn
-            const decision = gameEngine.decideAITurn()
+            const decision = await gameEngine.decideAITurn()
             console.log("AI decision:", decision)
             if (decision) {
               // Add detailed debugging for Wild Draw Four plays
@@ -1746,7 +1808,7 @@ function UnoGameInner() {
           console.log("AI turn fallback - no DOM elements")
 
           // Use synchronous AI decision instead of async playAITurn
-          const decision = gameEngine.decideAITurn()
+          const decision = await gameEngine.decideAITurn()
           console.log("AI decision:", decision)
           console.log("[DEBUG] AI decision context - Top card:", gameEngine.getTopCard()?.color, gameEngine.getTopCard()?.value)
           console.log("[DEBUG] AI decision context - Current player:", currentPlayer.name, "hand size:", currentPlayer.getHandSize())
@@ -3080,6 +3142,24 @@ function UnoGameInner() {
         {isDeveloperMode && (
           <div className="absolute top-2 left-2 bg-black/70 text-white p-2 rounded text-xs">
             Opponents: {players.slice(1).length} | Total: {players.length}
+            {players.slice(1).filter(p => p.isLLMEnabled).length > 0 && (
+              <div className="mt-1 text-purple-300">
+                🤖 LLM Players: {players.slice(1).filter(p => p.isLLMEnabled).length}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* LLM Status Indicator - Always visible when LLM players are present */}
+        {players.slice(1).filter(p => p.isLLMEnabled).length > 0 && (
+          <div className="absolute top-2 right-2 bg-gradient-to-r from-purple-600/90 to-pink-600/90 text-white p-2 rounded-lg shadow-lg border border-purple-400/50">
+            <div className="flex items-center gap-2 text-sm font-semibold">
+              <Brain className="w-4 h-4" />
+              <span>AI Enhanced</span>
+              <Badge className="bg-white/20 text-white text-xs">
+                {players.slice(1).filter(p => p.isLLMEnabled).length} LLM
+              </Badge>
+            </div>
           </div>
         )}
 
@@ -3096,12 +3176,17 @@ function UnoGameInner() {
             }}
           >
             <div className={`
-              flex flex-col items-center gap-3 transition-all duration-500 pointer-events-auto
+              flex flex-col items-center gap-3 transition-all duration-500 pointer-events-auto group
               ${player.isActive ? "scale-110" : "scale-100"}
             `}>
               {/* Active player spotlight */}
               {player.isActive && (
                 <div className="absolute -inset-4 bg-gradient-to-r from-yellow-400/20 via-yellow-300/30 to-yellow-400/20 rounded-full blur-xl animate-pulse"></div>
+              )}
+
+              {/* LLM player glow effect */}
+              {player.isLLMEnabled && !player.isActive && (
+                <div className="absolute -inset-2 bg-gradient-to-r from-purple-400/10 via-pink-400/15 to-purple-400/10 rounded-full blur-lg animate-pulse" style={{ animationDuration: '3s' }}></div>
               )}
 
 
@@ -3174,8 +3259,22 @@ function UnoGameInner() {
 
                 {/* AI Thinking indicator */}
                 {aiThinking && aiThinking.playerName === player.name && (
-                  <div className="absolute -bottom-3 -right-3 w-8 h-8 bg-purple-500 rounded-full flex items-center justify-center animate-spin">
-                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full"></div>
+                  <div className={`absolute -bottom-3 -right-3 w-8 h-8 rounded-full flex items-center justify-center animate-spin ${player.isLLMEnabled
+                    ? "bg-gradient-to-br from-purple-500 to-pink-500 shadow-lg shadow-purple-500/50"
+                    : "bg-purple-500"
+                    }`}>
+                    {player.isLLMEnabled ? (
+                      <Brain className="w-4 h-4 text-white" />
+                    ) : (
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full"></div>
+                    )}
+                  </div>
+                )}
+
+                {/* LLM Provider indicator */}
+                {player.isLLMEnabled && (
+                  <div className="absolute -bottom-3 -left-3 w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center shadow-lg">
+                    <Brain className="w-4 h-4 text-white" />
                   </div>
                 )}
               </div>
@@ -3192,6 +3291,15 @@ function UnoGameInner() {
                     <span className="ml-2 text-purple-300 animate-pulse">🤔</span>
                   )}
                 </p>
+                {/* LLM Provider badge */}
+                {player.isLLMEnabled && player.llmProviderName && (
+                  <div className="mt-1">
+                    <Badge className="bg-gradient-to-r from-purple-600/80 to-pink-600/80 text-white text-xs border border-purple-400/50">
+                      <Brain className="w-3 h-3 mr-1" />
+                      {player.llmProviderName}
+                    </Badge>
+                  </div>
+                )}
                 <Badge className={`
                   transition-all duration-300
                   ${player.isActive
@@ -3201,6 +3309,14 @@ function UnoGameInner() {
                 `}>
                   {player.cardCount} {player.cardCount === 1 ? 'card' : 'cards'}
                 </Badge>
+                {/* LLM Personality tooltip */}
+                {player.isLLMEnabled && player.personality && (
+                  <div className="mt-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                    <Badge className="bg-slate-700/90 text-white/90 text-xs border border-slate-500/50 max-w-[120px] truncate">
+                      {player.personality}
+                    </Badge>
+                  </div>
+                )}
                 {/* Score display */}
                 {/* <Badge className={`
                   mt-1 transition-all duration-300
@@ -3577,12 +3693,12 @@ function UnoGameInner() {
           <Button
             size="sm"
             className="mt-2 w-full"
-            onClick={() => {
+            onClick={async () => {
               if (gameEngine) {
                 console.log("=== FORCING AI TURN ===")
                 const currentPlayer = gameEngine.getCurrentPlayer()
                 console.log("Current player before force:", currentPlayer.name)
-                const decision = gameEngine.decideAITurn()
+                const decision = await gameEngine.decideAITurn()
                 console.log("AI decision:", decision)
                 if (decision) {
                   const success = gameEngine.applyAIAction(decision)

@@ -138,9 +138,20 @@ export class LLMWrapperStrategy implements IAIStrategy {
     private getAIPlayerForPlayer(player: UnoPlayer): any | null {
         if (player.isHuman) return null
 
-        return this.gameSettings.aiPlayers.find((aiPlayer: any) =>
+        console.log(`🔍 Looking for AI player config for: ${player.name}`)
+        console.log(`   Available AI players:`, this.gameSettings.aiPlayers.map(p => ({ name: p.name, isActive: p.isActive, llmProviderId: p.llmProviderId })))
+
+        const aiPlayer = this.gameSettings.aiPlayers.find((aiPlayer: any) =>
             aiPlayer.name === player.name && aiPlayer.isActive
         ) || null
+
+        if (aiPlayer) {
+            console.log(`✅ Found AI player config for ${player.name}:`, aiPlayer)
+        } else {
+            console.log(`❌ No AI player config found for ${player.name}`)
+        }
+
+        return aiPlayer
     }
 
     private logLLMDecision(player: UnoPlayer, playableCards: UnoCard[], chosenCard: UnoCard | null) {
