@@ -38,7 +38,7 @@ interface AIPlayer {
   isDefault?: boolean
 }
 
-interface GameSettings {
+export interface GameSettings {
   rules: UnoRules
   playerCount: number
   llmProviders: LLMProvider[]

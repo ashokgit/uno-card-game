@@ -79,8 +79,8 @@ export interface IAIGameState {
 }
 
 export interface IAIStrategy {
-  chooseCard(playableCards: UnoCard[], gameState: IAIGameState, player: UnoPlayer): UnoCard | null
-  chooseWildColor(hand: UnoCard[], gameState: IAIGameState, player: UnoPlayer): UnoColor
+  chooseCard(playableCards: UnoCard[], gameState: IAIGameState, player: UnoPlayer): UnoCard | null | Promise<UnoCard | null>
+  chooseWildColor(hand: UnoCard[], gameState: IAIGameState, player: UnoPlayer): UnoColor | Promise<UnoColor>
 }
 
 // Game State Tracker for Advanced AI
