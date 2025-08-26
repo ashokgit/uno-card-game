@@ -3263,24 +3263,17 @@ function UnoGameInner() {
                   </div>
                 )}
 
-                {/* AI Thinking indicator */}
-                {aiThinking && aiThinking.playerName === player.name && (
-                  <div className={`absolute -bottom-3 -right-3 w-8 h-8 rounded-full flex items-center justify-center animate-spin ${player.isLLMEnabled
-                    ? "bg-gradient-to-br from-purple-500 to-pink-500 shadow-lg shadow-purple-500/50"
-                    : "bg-purple-500"
-                    }`}>
-                    {player.isLLMEnabled ? (
-                      <Brain className="w-4 h-4 text-white" />
-                    ) : (
-                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full"></div>
-                    )}
-                  </div>
-                )}
-
                 {/* LLM Provider indicator */}
                 {player.isLLMEnabled && (
                   <div className="absolute -bottom-3 -left-3 w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center shadow-lg">
                     <Brain className="w-4 h-4 text-white" />
+                  </div>
+                )}
+
+                {/* AI Thinking indicator */}
+                {aiThinking && aiThinking.playerName === player.name && (
+                  <div className="absolute -bottom-3 -right-3 w-8 h-8 rounded-full flex items-center justify-center animate-spin bg-gradient-to-br from-blue-500 to-cyan-500 shadow-lg shadow-blue-500/50">
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full"></div>
                   </div>
                 )}
               </div>
