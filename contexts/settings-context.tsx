@@ -99,7 +99,7 @@ const DEFAULT_GAME_RULES: UnoRules = {
 
 const DEFAULT_GAME_SETTINGS: GameSettings = {
   rules: DEFAULT_GAME_RULES,
-  playerCount: 6,
+  playerCount: 10,
   llmProviders: [
     {
       id: 'openai-default',
@@ -161,6 +161,42 @@ const DEFAULT_GAME_SETTINGS: GameSettings = {
       avatar: '/female-avatar-3.png',
       llmProviderId: null,
       personality: 'Creative player who makes unexpected moves and takes calculated risks',
+      isActive: true,
+      isDefault: true
+    },
+    {
+      id: 'frank-default',
+      name: 'Frank',
+      avatar: '/male-avatar-3.png',
+      llmProviderId: null,
+      personality: 'Tactical player who focuses on card counting and probability',
+      isActive: true,
+      isDefault: true
+    },
+    {
+      id: 'grace-default',
+      name: 'Grace',
+      avatar: '/human-avatar.png',
+      llmProviderId: null,
+      personality: 'Social player who adapts strategy based on other players\' behavior',
+      isActive: true,
+      isDefault: true
+    },
+    {
+      id: 'henry-default',
+      name: 'Henry',
+      avatar: '/male-avatar.png',
+      llmProviderId: null,
+      personality: 'Calculating player who carefully tracks all cards played',
+      isActive: true,
+      isDefault: true
+    },
+    {
+      id: 'iris-default',
+      name: 'Iris',
+      avatar: '/female-avatar-2.png',
+      llmProviderId: null,
+      personality: 'Opportunistic player who seizes every advantage',
       isActive: true,
       isDefault: true
     }
@@ -286,10 +322,12 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   }
 
   const addAIPlayer = (player: Omit<AIPlayer, 'id'>) => {
-    const newPlayer: AIPlayer = {
-      ...player,
-      id: `ai-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-    }
+          const newPlayer: AIPlayer = {
+        ...player,
+        id: `ai-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        isDefault: false // Ensure custom players are marked as non-default
+      }
+      console.log('➕ Adding new AI player:', newPlayer)
     setGameSettings(prev => ({
       ...prev,
       aiPlayers: [...prev.aiPlayers, newPlayer]

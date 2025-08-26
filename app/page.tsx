@@ -590,8 +590,8 @@ function UnoGameInner() {
     const centerY = 35 + 20; // Center of deck area moved 20px below
     const radius = 35;  // Distance from center (increased for more spacing)
 
-    // Angles for each opponent (in degrees)
-    const angles = [180, 225, 270, 315, 0]; // Perfect arc distribution
+    // Angles for each opponent (in degrees) - updated for up to 9 opponents
+    const angles = [180, 200, 220, 240, 260, 280, 300, 320, 0]; // Perfect arc distribution for up to 9 players
 
     const opponentIndex = index - 1
     if (opponentIndex < angles.length) {
@@ -606,7 +606,7 @@ function UnoGameInner() {
       }
     }
 
-    // Fallback for additional players
+    // Fallback for additional players (shouldn't happen with 10 players max)
     const fallbackIndex = opponentIndex - angles.length
     return {
       top: `${centerY + (fallbackIndex * 5)}%`,

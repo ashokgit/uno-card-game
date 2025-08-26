@@ -27,7 +27,8 @@ import {
     Download,
     Upload,
     Plus,
-    Trash2
+    Trash2,
+    AlertTriangle
 } from "lucide-react"
 import { UnoRules } from "@/lib/uno-engine"
 import { useSettings } from "@/contexts/settings-context"
@@ -86,6 +87,11 @@ export function GameSettings({ isOpen, onClose, onStartGame, currentRules }: Gam
     if (!isOpen) return null
 
     const handleStartGame = () => {
+        const activeAIPlayers = gameSettings.aiPlayers.filter(p => p.isActive)
+        if (activeAIPlayers.length === 0) {
+            alert('At least one AI player must be active to start a game!')
+            return
+        }
         onStartGame(gameSettings.rules, gameSettings.playerCount)
         onClose()
     }
@@ -414,7 +420,7 @@ export function GameSettings({ isOpen, onClose, onStartGame, currentRules }: Gam
                                                     <SelectValue />
                                                 </SelectTrigger>
                                                 <SelectContent className="bg-black/90 border-white/20">
-                                                    {[2, 3, 4, 5, 6].map(num => (
+                                                    {[2, 3, 4, 5, 6, 7, 8, 9, 10].map(num => (
                                                         <SelectItem key={num} value={num.toString()} className="text-white">
                                                             {num} Players
                                                         </SelectItem>
@@ -616,6 +622,10 @@ export function GameSettings({ isOpen, onClose, onStartGame, currentRules }: Gam
                                             variant="outline"
                                             size="sm"
                                             onClick={() => {
+                                                if (gameSettings.aiPlayers.length >= 9) {
+                                                    alert('Maximum 9 AI players allowed (10 total players including human)')
+                                                    return
+                                                }
                                                 addAIPlayer({
                                                     name: 'New AI Player',
                                                     avatar: '/human-avatar.png',
@@ -625,8 +635,9 @@ export function GameSettings({ isOpen, onClose, onStartGame, currentRules }: Gam
                                                 })
                                             }}
                                             className="bg-slate-700/50 text-white border-slate-500/50 hover:bg-slate-600/50"
+                                            disabled={gameSettings.aiPlayers.length >= 9}
                                         >
-                                            Add Player
+                                            Add Player {gameSettings.aiPlayers.length >= 9 ? '(Max Reached)' : ''}
                                         </Button>
                                         <Button
                                             variant="outline"
@@ -795,6 +806,20 @@ export function GameSettings({ isOpen, onClose, onStartGame, currentRules }: Gam
                                             <p>No AI players configured</p>
                                             <p className="text-sm">Add AI players to create custom opponents</p>
                                         </div>
+                                    )}
+
+                                    {/* Validation Warnings */}
+                                    {gameSettings.aiPlayers.filter(p => p.isActive).length === 0 && (
+                                        <Card className="p-4 bg-red-900/20 border-red-500/30">
+                                            <div className="flex items-start gap-3">
+                                                <AlertTriangle className="w-5 h-5 text-red-400 mt-0.5 flex-shrink-0" />
+                                                <div className="text-sm text-red-200">
+                                                    <p className="font-semibold mb-2">⚠️ Warning:</p>
+                                                    <p>No active AI players! At least one AI player must be active to start a game.</p>
+                                                    <p className="text-xs mt-1">Enable at least one AI player by toggling the switch next to their name.</p>
+                                                </div>
+                                            </div>
+                                        </Card>
                                     )}
 
                                     {/* Debug Section - Temporary */}
