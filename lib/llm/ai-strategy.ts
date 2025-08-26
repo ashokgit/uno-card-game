@@ -266,7 +266,23 @@ export class LLMAIStrategy {
 
     private parseLLMResponse(response: string, playableCards: UnoCard[]): UnoCard | null {
         try {
-            const parsed = JSON.parse(response)
+            // Clean the response by removing markdown code blocks
+            let cleanedResponse = response.trim()
+
+            // Remove markdown code blocks if present
+            if (cleanedResponse.startsWith('```json')) {
+                cleanedResponse = cleanedResponse.replace(/^```json\s*/, '')
+            }
+            if (cleanedResponse.startsWith('```')) {
+                cleanedResponse = cleanedResponse.replace(/^```\s*/, '')
+            }
+            if (cleanedResponse.endsWith('```')) {
+                cleanedResponse = cleanedResponse.replace(/\s*```$/, '')
+            }
+
+            console.log('Cleaned LLM response:', cleanedResponse)
+
+            const parsed = JSON.parse(cleanedResponse)
 
             if (parsed.action === 'play' && parsed.card) {
                 // Find the card by ID (now more reliable with structured data)
@@ -293,7 +309,23 @@ export class LLMAIStrategy {
 
     private parseWildColorResponse(response: string): UnoColor | null {
         try {
-            const parsed = JSON.parse(response)
+            // Clean the response by removing markdown code blocks
+            let cleanedResponse = response.trim()
+
+            // Remove markdown code blocks if present
+            if (cleanedResponse.startsWith('```json')) {
+                cleanedResponse = cleanedResponse.replace(/^```json\s*/, '')
+            }
+            if (cleanedResponse.startsWith('```')) {
+                cleanedResponse = cleanedResponse.replace(/^```\s*/, '')
+            }
+            if (cleanedResponse.endsWith('```')) {
+                cleanedResponse = cleanedResponse.replace(/\s*```$/, '')
+            }
+
+            console.log('Cleaned wild color response:', cleanedResponse)
+
+            const parsed = JSON.parse(cleanedResponse)
 
             if (parsed.action === 'wild_color' && parsed.color) {
                 const validColors: UnoColor[] = ['red', 'blue', 'green', 'yellow']
