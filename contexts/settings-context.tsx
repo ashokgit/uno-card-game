@@ -227,13 +227,18 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     if (savedGameSettings) {
       try {
         const parsed = JSON.parse(savedGameSettings)
-        // Ensure default players are always preserved
+        // Merge settings but preserve saved player states
         const mergedSettings = {
           ...DEFAULT_GAME_SETTINGS,
           ...parsed,
-          // Always preserve default players, merge with any custom players
+          // Merge default players with saved states, preserving custom players
           aiPlayers: [
-            ...DEFAULT_GAME_SETTINGS.aiPlayers,
+            // Start with default players but preserve their saved states
+            ...DEFAULT_GAME_SETTINGS.aiPlayers.map(defaultPlayer => {
+              const savedPlayer = parsed.aiPlayers?.find((p: any) => p.id === defaultPlayer.id)
+              return savedPlayer ? { ...defaultPlayer, ...savedPlayer } : defaultPlayer
+            }),
+            // Add any custom players that aren't defaults
             ...(parsed.aiPlayers?.filter((player: any) => !player.isDefault) || [])
           ]
         }
@@ -322,12 +327,12 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   }
 
   const addAIPlayer = (player: Omit<AIPlayer, 'id'>) => {
-          const newPlayer: AIPlayer = {
-        ...player,
-        id: `ai-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        isDefault: false // Ensure custom players are marked as non-default
-      }
-      console.log('➕ Adding new AI player:', newPlayer)
+    const newPlayer: AIPlayer = {
+      ...player,
+      id: `ai-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      isDefault: false // Ensure custom players are marked as non-default
+    }
+    console.log('➕ Adding new AI player:', newPlayer)
     setGameSettings(prev => ({
       ...prev,
       aiPlayers: [...prev.aiPlayers, newPlayer]
